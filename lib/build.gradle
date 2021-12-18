@@ -58,6 +58,8 @@ tasks.withType(Test) {
     jacoco.excludes = ['jdk.internal.*']
 }
 
+// comment block below when running debug variant of application to avoid issues with jacoco
+// uncomment when running integration tests in CI server to generate jacoco report
 configurations.all{
     resolutionStrategy {
         eachDependency { details ->

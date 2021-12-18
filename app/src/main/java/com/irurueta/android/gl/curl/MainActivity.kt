@@ -10,12 +10,24 @@ import androidx.core.content.ContextCompat
 
 class MainActivity : AppCompatActivity() {
 
+    /**
+     * Reference to view in charge of drawing page curls.
+     */
     private var view: CurlTextureView? = null
 
+    /**
+     * View responsible to draw a title behind the curl view.
+     */
     private var title: TextView? = null
 
+    /**
+     * Loaded bitmaps. These are kept in memory for performance reasons.
+     */
     private var bitmaps = arrayOfNulls<Bitmap>(PAGE_COUNT)
 
+    /**
+     * A tage provider to load bitmaps to draw on each page.
+     */
     private val pageProvider = object : CurlTextureView.PageProvider {
         override val pageCount: Int
             get() = PAGE_COUNT
@@ -50,6 +62,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Called when activity is created.
+     * References views in te activity, loads bitmaps and registers an observer to know when
+     * the curl view is ready.
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
@@ -78,21 +95,36 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Called when activity is paused. Also pauses curl view.
+     */
     override fun onPause() {
         super.onPause()
         view?.onPause()
     }
 
+    /**
+     * Called when activity is resumed. Also resumes curl view.
+     */
     override fun onResume() {
         super.onResume()
         view?.onResume()
     }
 
+    /**
+     * Called when activity is destroyed.
+     * Unloads all bitmaps.
+     */
     override fun onDestroy() {
         super.onDestroy()
         unloadAllBitmaps()
     }
 
+    /**
+     * Loads all bitmaps into memory.
+     * For large collections of bitmaps, only the ones close to the page being displayed should
+     * be kept in memory, to ensure a good balance between performance and memory usage.
+     */
     private fun loadAllBitmaps() {
         // bitmaps need to be loaded in memory first for performance reasons
         val drawables = listOf(R.drawable.image1, R.drawable.image2, R.drawable.image3)
@@ -104,6 +136,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Unloads all loaded bitmaps from memory.
+     */
     private fun unloadAllBitmaps() {
         for (i in bitmaps.indices) {
             val bitmap = bitmaps[i]
@@ -114,6 +149,13 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Loads a single bitmap if not already loaded.
+     *
+     * @param width width of curl page expressed in pixels.
+     * @param height height of curl page expressed in pixels.
+     * @param index page position corresponding to the bitmap to be loaded.
+     */
     private fun loadBitmap(width: Int, height: Int, index: Int): Bitmap? {
         val bitmap = bitmaps[index] ?: return null
 
@@ -142,9 +184,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
+        /**
+         * Number of pages.
+         */
         const val PAGE_COUNT = 3
+
+        /**
+         * Default margin.
+         */
         const val MARGIN_DP = 20.0f
 
+        /**
+         * Converts from DP's to pixels.
+         */
         @Suppress("SameParameterValue")
         private fun dp2px(dp: Float): Int {
             return TypedValue.applyDimension(

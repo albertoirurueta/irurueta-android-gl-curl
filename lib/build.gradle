@@ -58,13 +58,22 @@ tasks.withType(Test) {
     jacoco.excludes = ['jdk.internal.*']
 }
 
-// comment block below when running debug variant of application to avoid issues with jacoco
-// uncomment when running integration tests in CI server to generate jacoco report
 configurations.all{
     resolutionStrategy {
         eachDependency { details ->
-            if ('org.jacoco' == details.requested.group) {
-                details.useVersion "$jacoco_version"
+            def sysprops = System.getProperties()
+            if (sysprops['idea.platform.prefix'] != null) {
+                // Built from AndroidStudio
+                // When running from Android Studio, there is no need to generate jacoco report
+                // and nothing is changed so that debug variant of app can still run
+            } else {
+                // Built from command line
+                // Enabling this allows correct jacoco report generation for instrumentation tests
+                // in CI server, however prevents execution of debug variant of demo app in Android
+                // Studio
+                if ('org.jacoco' == details.requested.group) {
+                    details.useVersion "$jacoco_version"
+                }
             }
         }
     }

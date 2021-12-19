@@ -71,7 +71,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
         setContentView(R.layout.activity_main)
-        view = findViewById(R.id.curl_gl_surface_view)
+        view = findViewById(R.id.curl_gl_texture_view)
         title = findViewById(R.id.title)
 
         loadAllBitmaps()

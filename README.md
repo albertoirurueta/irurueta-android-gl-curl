@@ -90,6 +90,3 @@ In order to draw something, a page provider must be provided as in the example b
 
 For more information, please refer to the demo application activity contained in the app module.
 
-In order to be able to run the demo application, please follow the indication in build.gradle for 
-lib module to comment the configurations.all section to avoid issues with jacoco. These will be
-addressed in the future when new jacoco and gradle versions are released that fix this conflict.

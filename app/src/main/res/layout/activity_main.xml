@@ -20,7 +20,7 @@
         app:layout_constraintTop_toTopOf="parent" />
 
     <com.irurueta.android.gl.curl.CurlTextureView
-        android:id="@+id/curl_gl_surface_view"
+        android:id="@+id/curl_gl_texture_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent"/>
 

@@ -19,7 +19,7 @@ android {
         consumerProguardFiles "consumer-rules.pro"
 
         def buildNumber = System.getenv("BUILD_NUMBER") as Integer ?: 0
-        def apkPrefixLabels = ['glutils', versionName, buildNumber]
+        def apkPrefixLabels = ['glcurl', versionName, buildNumber]
         archivesBaseName = apkPrefixLabels.findAll { it != "" }.join('-')
     }
 

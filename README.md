@@ -17,7 +17,7 @@ A 3D page curl view
 [![Technical debt](https://sonarcloud.io/api/project_badges/measure?project=albertoirurueta_irurueta-android-gl-curl&metric=sqale_index)](https://sonarcloud.io/dashboard?id=albertoirurueta_irurueta-android-gl-curl)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=albertoirurueta_irurueta-android-gl-curl&metric=vulnerabilities)](https://sonarcloud.io/dashboard?id=albertoirurueta_irurueta-android-gl-curl)
 
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.irurueta/irurueta-android-gl-curl/badge.svg)](https://search.maven.org/artifact/com.irurueta/irurueta-android-gl-curl/1.0.0/aar)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.irurueta/irurueta-android-gl-curl/badge.svg)](https://search.maven.org/artifact/com.irurueta/irurueta-android-gl-curl/1.0.1/aar)
 
 [API Documentation](http://albertoirurueta.github.io/irurueta-android-gl-curl)
 
@@ -38,7 +38,7 @@ Two views are available:
 Add the following dependency to your project:
 
 ```
-implementation 'com.irurueta:irurueta-android-gl-curl:1.0.0'
+implementation 'com.irurueta:irurueta-android-gl-curl:1.0.1'
 ```
 
 The view can be added to your layout as:

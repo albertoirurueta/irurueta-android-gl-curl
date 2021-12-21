@@ -19,7 +19,7 @@ buildscript {
         rules_version = '1.4.0'
         jacoco_version = '0.8.7'
         nexus_publish_version = '1.1.0'
-        irurueta_android_glutils_version = '1.0.7'
+        irurueta_android_glutils_version = '1.0.9'
     }
     repositories {
         google()

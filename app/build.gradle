@@ -6,17 +6,18 @@ plugins {
     id 'org.jetbrains.dokka'
     id 'jacoco'
     id 'org.sonarqube'
+    id 'org.jetbrains.kotlin.android'
 }
 
 android {
-    compileSdk 31
+    compileSdk 33
 
     defaultConfig {
         applicationId "com.irurueta.android.gl.curl"
         minSdk 21
-        targetSdk 30
-        versionCode 2
-        versionName "1.0.1"
+        targetSdk 33
+        versionCode 3
+        versionName "1.0.2"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -54,6 +55,7 @@ android {
     kotlinOptions {
         jvmTarget = '1.8'
     }
+    namespace 'com.irurueta.android.gl.curl'
 }
 
 jacoco {

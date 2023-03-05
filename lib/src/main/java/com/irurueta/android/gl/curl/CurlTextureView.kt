@@ -516,9 +516,9 @@ class CurlTextureView @JvmOverloads constructor(
      * @return true if event has been handled, false otherwise.
      */
     @SuppressLint("ClickableViewAccessibility")
-    override fun onTouchEvent(event: MotionEvent?): Boolean {
-        if (event?.action == MotionEvent.ACTION_CANCEL
-            || event?.action == MotionEvent.ACTION_UP
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.action == MotionEvent.ACTION_CANCEL
+            || event.action == MotionEvent.ACTION_UP
         ) {
             handleTouchUp(event)
         }
@@ -1002,14 +1002,14 @@ class CurlTextureView @JvmOverloads constructor(
 
                     private var scrolling: Boolean = false
 
-                    override fun onSingleTapUp(e: MotionEvent?): Boolean {
+                    override fun onSingleTapUp(e: MotionEvent): Boolean {
                         return pageClickListener?.onPageClick(this@CurlTextureView, currentIndex)
                             ?: false
                     }
 
                     override fun onScroll(
-                        e1: MotionEvent?,
-                        e2: MotionEvent?,
+                        e1: MotionEvent,
+                        e2: MotionEvent,
                         distanceX: Float,
                         distanceY: Float
                     ): Boolean {
@@ -1017,8 +1017,8 @@ class CurlTextureView @JvmOverloads constructor(
                     }
 
                     override fun onFling(
-                        e1: MotionEvent?,
-                        e2: MotionEvent?,
+                        e1: MotionEvent,
+                        e2: MotionEvent,
                         velocityX: Float,
                         velocityY: Float
                     ): Boolean {
@@ -1026,15 +1026,13 @@ class CurlTextureView @JvmOverloads constructor(
                         return handleScroll(e1, e2)
                     }
 
-                    override fun onDown(e: MotionEvent?): Boolean {
+                    override fun onDown(e: MotionEvent): Boolean {
                         // first touch event (reset scroll flag)
                         scrolling = false
                         return true
                     }
 
-                    private fun handleScroll(e1: MotionEvent?, e2: MotionEvent?): Boolean {
-                        if (e1 == null || e2 == null) return false
-
+                    private fun handleScroll(e1: MotionEvent, e2: MotionEvent): Boolean {
                         if (!scrolling) {
                             // this is the first scroll event
                             handleFirstScrollEvent(e1)
@@ -1154,20 +1152,20 @@ class CurlTextureView @JvmOverloads constructor(
         curlAnimator.interpolator = AccelerateInterpolator()
 
         curlAnimator.addListener(object : Animator.AnimatorListener {
-            override fun onAnimationEnd(animation: Animator?) {
+            override fun onAnimationEnd(animation: Animator) {
                 // ensure last position is set so that curl is properly finished
                 updateLastCurlPos(endX, y, 0.0f, newIndex)
             }
 
-            override fun onAnimationRepeat(animation: Animator?) {
+            override fun onAnimationRepeat(animation: Animator) {
                 // not used
             }
 
-            override fun onAnimationCancel(animation: Animator?) {
+            override fun onAnimationCancel(animation: Animator) {
                 // not used
             }
 
-            override fun onAnimationStart(animation: Animator?) {
+            override fun onAnimationStart(animation: Animator) {
                 // not used
             }
         })
@@ -1261,7 +1259,7 @@ class CurlTextureView @JvmOverloads constructor(
 
         when (page) {
             CURL_RIGHT -> {
-                val targetIndex = newIndex ?: currentIndex + 1
+                val targetIndex = newIndex ?: (currentIndex + 1)
 
                 // Once right side page is curled, first right page is assigned into
                 // curled page. And if there are more bitmaps available new bitmap is
@@ -1302,7 +1300,7 @@ class CurlTextureView @JvmOverloads constructor(
                 curlState = CURL_RIGHT
             }
             CURL_LEFT -> {
-                val targetIndex = newIndex ?: currentIndex - 1
+                val targetIndex = newIndex ?: (currentIndex - 1)
 
                 // On left side curl, left page is assigned to curled page. And if
                 // there are more bitmaps available before currentIndex, new bitmap

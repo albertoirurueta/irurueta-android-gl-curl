@@ -1537,6 +1537,7 @@ class CurlGLSurfaceViewTest {
         view.renderLeftPage = false
 
         // check
+        @Suppress("KotlinConstantConditions")
         assertFalse(view.renderLeftPage)
     }
 
@@ -1661,14 +1662,6 @@ class CurlGLSurfaceViewTest {
 
         // check
         assertSame(listener, view.pageClickListener)
-    }
-
-    @Test(expected = NullPointerException::class)
-    fun onTouchEvent_whenNoEvent_makesNoAction() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val view = CurlGLSurfaceView(context)
-
-        view.onTouchEvent(null)
     }
 
     @Test
@@ -4035,30 +4028,6 @@ class CurlGLSurfaceViewTest {
     }
 
     @Test
-    fun gestureDetector_onScrollWhenNoMotionEvents_makesNoAction() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val view = CurlGLSurfaceView(context)
-
-        val gestureDetector: GestureDetector? = view.getPrivateProperty("gestureDetector")
-        requireNotNull(gestureDetector)
-
-        val gestureDetectorListenerField = GestureDetector::class.java.getDeclaredField("mListener")
-        gestureDetectorListenerField.isAccessible = true
-        val gestureDetectorListener =
-            gestureDetectorListenerField.get(gestureDetector) as GestureDetector.SimpleOnGestureListener
-
-        val scrollingField = gestureDetectorListener::class.java.getDeclaredField("scrolling")
-        scrollingField.isAccessible = true
-        val scrolling1 = scrollingField.getBoolean(gestureDetectorListener)
-        assertFalse(scrolling1)
-
-        assertFalse(gestureDetectorListener.onScroll(null, null, 1.0f, 2.0f))
-
-        val scrolling2 = scrollingField.getBoolean(gestureDetectorListener)
-        assertFalse(scrolling2)
-    }
-
-    @Test
     fun gestureDetector_onScrollWhenNotScrolling_startsScrolling() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlGLSurfaceView(context)
@@ -4111,35 +4080,6 @@ class CurlGLSurfaceViewTest {
         assertTrue(scrolling)
 
         verify { e1 wasNot Called }
-    }
-
-    @Test
-    fun gestureDetector_onFlingWhenNoMotionEvents_makesNoAction() {
-        val context = ApplicationProvider.getApplicationContext<Context>()
-        val view = CurlGLSurfaceView(context)
-
-        val curlAnimator = mockk<ValueAnimator>()
-        every { curlAnimator.isRunning }.returns(true)
-        justRun { curlAnimator.cancel() }
-        view.setPrivateProperty("curlAnimator", curlAnimator)
-
-        val gestureDetector: GestureDetector? = view.getPrivateProperty("gestureDetector")
-        requireNotNull(gestureDetector)
-
-        val gestureDetectorListenerField = GestureDetector::class.java.getDeclaredField("mListener")
-        gestureDetectorListenerField.isAccessible = true
-        val gestureDetectorListener =
-            gestureDetectorListenerField.get(gestureDetector) as GestureDetector.SimpleOnGestureListener
-
-        val scrollingField = gestureDetectorListener::class.java.getDeclaredField("scrolling")
-        scrollingField.isAccessible = true
-        val scrolling1 = scrollingField.getBoolean(gestureDetectorListener)
-        assertFalse(scrolling1)
-
-        assertFalse(gestureDetectorListener.onFling(null, null, 1.0f, 2.0f))
-
-        val scrolling2 = scrollingField.getBoolean(gestureDetectorListener)
-        assertFalse(scrolling2)
     }
 
     @Test
@@ -4224,7 +4164,8 @@ class CurlGLSurfaceViewTest {
         scrollingField.isAccessible = true
         scrollingField.setBoolean(gestureDetectorListener, true)
 
-        gestureDetectorListener.onDown(null)
+        val e = mockk<MotionEvent>(relaxed = true)
+        gestureDetectorListener.onDown(e)
 
         val scrolling = scrollingField.getBoolean(gestureDetectorListener)
         assertFalse(scrolling)

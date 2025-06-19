@@ -23,6 +23,7 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.test.ext.junit.rules.activityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.filters.RequiresDevice
 import androidx.test.internal.runner.junit4.statement.UiThreadStatement
 import com.irurueta.android.glutils.GLTextureView
 import com.irurueta.android.gl.curl.InstrumentationTestHelper
@@ -38,6 +39,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+@RequiresDevice
 @RunWith(AndroidJUnit4::class)
 class CurlTextureViewTest {
 

@@ -19,6 +19,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.RectF
+import androidx.core.graphics.createBitmap
 
 /**
  * Storage class for page textures and blend colors.
@@ -58,6 +59,9 @@ class CurlPage {
      */
     private var textureFront: Bitmap? = null
 
+    /**
+     * Initializes this CurlPage.
+     */
     init {
         reset()
     }
@@ -65,6 +69,7 @@ class CurlPage {
     /**
      * Gets color for provided page side value.
      *
+     * @param side side of the page for which color is required.
      * @see [SIDE_FRONT], [SIDE_BACK], [SIDE_BOTH]
      */
     fun getColor(side: Int): Int {
@@ -80,6 +85,7 @@ class CurlPage {
      * with actual texture coordinates in this new unscaled texture Bitmap.
      *
      * @param textureRect instance where original texture coordinates will be stored.
+     * @param side side of the page for which texture is required.
      * @return texture for required page side or null if not available.
      */
     fun getTexture(textureRect: RectF, side: Int): Bitmap? {
@@ -94,11 +100,11 @@ class CurlPage {
      */
     fun recycle() {
         textureFront?.recycle()
-        textureFront = Bitmap.createBitmap(1, 1, Bitmap.Config.RGB_565)
+        textureFront = createBitmap(1, 1, Bitmap.Config.RGB_565)
         textureFront?.eraseColor(colorFront)
 
         textureBack?.recycle()
-        textureBack = Bitmap.createBitmap(1, 1, Bitmap.Config.RGB_565)
+        textureBack = createBitmap(1, 1, Bitmap.Config.RGB_565)
         textureBack?.eraseColor(colorBack)
         texturesChanged = false
     }
@@ -140,7 +146,7 @@ class CurlPage {
     fun setTexture(texture: Bitmap?, side: Int) {
         var texture2 = texture
         if (texture2 == null) {
-            texture2 = Bitmap.createBitmap(1, 1, Bitmap.Config.RGB_565)
+            texture2 = createBitmap(1, 1, Bitmap.Config.RGB_565)
             if (side == SIDE_BACK) {
                 texture2.eraseColor(colorBack)
             } else {
@@ -168,6 +174,8 @@ class CurlPage {
 
     /**
      * Calculates the next highest power of two for a given integer.
+     *
+     * @param n integer for which next highest power of two is required.
      */
     private fun getNextHighestPO2(n: Int): Int {
         var n2 = n
@@ -199,6 +207,10 @@ class CurlPage {
         if (bitmap == null) {
             return null
         }
+        val bitmapConfig = bitmap.config
+        if (bitmapConfig == null) {
+            return null
+        }
 
         // Bitmap original size
         val w = bitmap.width
@@ -210,7 +222,7 @@ class CurlPage {
         val newH = getNextHighestPO2(h)
 
         // draw bitmap with larger size
-        val bitmapTex = Bitmap.createBitmap(newW, newH, bitmap.config)
+        val bitmapTex = createBitmap(newW, newH, bitmapConfig)
         val c = Canvas(bitmapTex)
         c.drawBitmap(bitmap, 0.0f, 0.0f, null)
 

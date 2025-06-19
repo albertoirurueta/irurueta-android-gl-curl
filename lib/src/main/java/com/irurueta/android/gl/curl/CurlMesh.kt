@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.irurueta.android.gl.curl
 
 import android.graphics.Color
@@ -57,38 +58,86 @@ class CurlMesh private constructor(
     // once here and reuse them on runtime. Doesn't really have very much effect
     // but avoids some garbage collections from happening.
 
+    /**
+     * Default color factor offset.
+     */
     private var arrDropShadowVertices: CurlArray<ShadowVertex>? = null
 
+    /**
+     * Array for rotated vertices.
+     */
     private val arrIntersections: CurlArray<Vertex> = CurlArray(2)
 
+    /**
+     * Array for output vertices.
+     */
     private val arrOutputVertices: CurlArray<Vertex> = CurlArray(7)
 
+    /**
+     * Array for rotated vertices.
+     */
     private val arrRotatedVertices: CurlArray<Vertex> = CurlArray(4)
 
+    /**
+     * Array for scan lines.
+     */
     private var arrScanLines: CurlArray<Double>? = null
 
+    /**
+     * Array for self shadow vertices.
+     */
     private var arrSelfShadowVertices: CurlArray<ShadowVertex>? = null
 
+    /**
+     * Array for temporary shadow vertices.
+     */
     private var arrTempShadowVertices: CurlArray<ShadowVertex>? = null
 
+    /**
+     * Array for temporary vertices.
+     */
     private val arrTempVertices: CurlArray<Vertex> = CurlArray(11) // 7 + 4
 
     // Buffers for feeding rasterizer
 
+    /**
+     * Buffer for colors.
+     */
     private var bufColors: FloatBuffer? = null
 
+    /**
+     * Buffer for curl position lines.
+     */
     private var bufCurlPositionLines: FloatBuffer? = null
 
+    /**
+     * Buffer for shadow colors.
+     */
     private var bufShadowColors: FloatBuffer? = null
 
+    /**
+     * Buffer for shadow vertices.
+     */
     private var bufShadowVertices: FloatBuffer? = null
 
+    /**
+     * Buffer for texture coordinates.
+     */
     private var bufTexCoords: FloatBuffer? = null
 
+    /**
+     * Buffer for vertices.
+     */
     private var bufVertices: FloatBuffer? = null
 
+    /**
+     * Number of lines used for drawing curl position.
+     */
     private var curlPositionLinesCount: Int = 0
 
+    /**
+     * Number of drop shadow vertices.
+     */
     private var dropShadowCount: Int = 0
 
     /**
@@ -110,18 +159,39 @@ class CurlMesh private constructor(
      */
     private val rectangle: Array<Vertex?> = Array(4) { null }
 
+    /**
+     * Number of vertices used for drawing back facing mesh.
+     */
     private var selfShadowCount: Int = 0
 
+    /**
+     * Boolean indicating if texture for back side has been set.
+     */
     private var textureBack: Boolean = false
 
+    /**
+     * Texture identifiers.
+     */
     private var textureIds: IntArray? = null
 
+    /**
+     * Texture rectangle for back side.
+     */
     private val textureRectBack = RectF()
 
+    /**
+     * Texture rectangle for front side.
+     */
     private val textureRectFront = RectF()
 
+    /**
+     * Number of vertices used for drawing front facing mesh.
+     */
     private var verticesCountBack: Int = 0
 
+    /**
+     * Number of vertices used for drawing front facing mesh.
+     */
     private var verticesCountFront: Int = 0
 
     /**
@@ -148,6 +218,18 @@ class CurlMesh private constructor(
      *
      * @param maxCurlSplits maximum number of times the curl can be divided into. The bigger the
      * value the smoother the curl will be, at the expense of having more polygons to be drawn.
+     *
+     * @param drawCurlPosition number of times the curl can be divided into. The bigger the value
+     * the smoother the curl will be, at the expense of having more polygons to be drawn.
+     * @param drawPolygonOutlines Flag for drawing polygon outlines. Seeing polygon outlines gives
+     * good insight on how original rectangle is divided.
+     * @param drawShadow Flag for enabling shadow rendering.
+     * @param drawTexture Flag for texture rendering.
+     * @param shadowInnerColor Inner color for shadow. Inner color is the color drawn next to
+     * surface where shadowed area starts.
+     * @param shadowOuterColor Outer color for shadow. Outer color is the color the shadow ends to.
+     * @param colorFactorOffset Color factor offset to make darker or clearer the area of the
+     * texture close to the curl.
      */
     constructor(
         maxCurlSplits: Int,
@@ -168,7 +250,7 @@ class CurlMesh private constructor(
         this.maxCurlSplits = max(1, maxCurlSplits)
 
         arrScanLines = CurlArray(this.maxCurlSplits + 2)
-        for (i in 0 until 11) {
+        (0 until 11).forEach { i ->
             arrTempVertices.add(Vertex())
         }
 
@@ -177,7 +259,7 @@ class CurlMesh private constructor(
             arrSelfShadowVertices = CurlArray(num)
             arrDropShadowVertices = CurlArray(num)
             arrTempShadowVertices = CurlArray(num)
-            for (i in 0 until num) {
+            (0 until num).forEach { i ->
                 arrTempShadowVertices?.add(ShadowVertex())
             }
         }
@@ -263,7 +345,7 @@ class CurlMesh private constructor(
      * Sets curl for this mesh.
      *
      * @param curlPos position for curl 'center'. Can be any point on the
-     * colinear line to the curl.
+     * co-linear line to the curl.
      * @param curlDir curl direction, should be normalized.
      * @param radius radius of curl.
      */
@@ -646,6 +728,8 @@ class CurlMesh private constructor(
 
     /**
      * Renders out page curl mesh
+     *
+     * @param gl GL instance to use for rendering.
      */
     @Synchronized
     fun onDrawFrame(gl: GL10) {
@@ -875,6 +959,8 @@ class CurlMesh private constructor(
 
     /**
      * If true, flips texture sideways.
+     *
+     * @param flipTexture true if texture is flipped.
      */
     @Synchronized
     fun setFlipTexture(flipTexture: Boolean) {
@@ -888,6 +974,8 @@ class CurlMesh private constructor(
 
     /**
      * Update mesh bounds.
+     *
+     * @param r New mesh bounds.
      */
     fun setRect(r: RectF?) {
         if (r == null) return
@@ -904,6 +992,9 @@ class CurlMesh private constructor(
 
     /**
      * Sets texture coordinates to rectangle vertices.
+     *
+     * @param left Texture coordinate for left vertex.
+     * @param right Texture coordinate for right vertex.
      */
     @Synchronized
     private fun setTexCoords(left: Double, right: Double) {
@@ -921,6 +1012,11 @@ class CurlMesh private constructor(
 
     /**
      * Calculates intersections for a given scan line.
+     *
+     * @param vertices vertices of the rectangle.
+     * @param lineIndices line indices.
+     * @param scanX scan line x-coordinate.
+     * @return list of intersection vertices.
      */
     private fun getIntersections(
         vertices: CurlArray<Vertex>,
@@ -963,6 +1059,8 @@ class CurlMesh private constructor(
 
     /**
      * Adds vertex to buffers.
+     *
+     * @param vertex vertex to be added.
      */
     private fun addVertex(vertex: Vertex) {
         bufVertices?.put(vertex.posX.toFloat())
@@ -1156,6 +1254,13 @@ class CurlMesh private constructor(
 
     /**
      * Holder for shadow vertex information
+     *
+     * @property penumbraColor color of the penumbra.
+     * @property penumbraX x-coordinate of the penumbra.
+     * @property penumbraY y-coordinate of the penumbra.
+     * @property posX x-coordinate of the vertex.
+     * @property posY y-coordinate of the vertex.
+     * @property posZ z-coordinate of the vertex.
      */
     private data class ShadowVertex(
         var penumbraColor: Double = 0.0,
@@ -1166,6 +1271,19 @@ class CurlMesh private constructor(
         var posZ: Double = 0.0
     )
 
+    /**
+     * Holder for vertex information.
+     *
+     * @property color color of the vertex.
+     * @property colorFactor color factor of the vertex.
+     * @property penumbraX x-coordinate of the penumbra.
+     * @property penumbraY y-coordinate of the penumbra.
+     * @property posX x-coordinate of the vertex.
+     * @property posY y-coordinate of the vertex.
+     * @property posZ z-coordinate of the vertex.
+     * @property texX x-coordinate of the texture.
+     * @property texY y-coordinate of the texture.
+     */
     private class Vertex(
         var color: Int = 0,
         var colorFactor: Float = 1.0f,

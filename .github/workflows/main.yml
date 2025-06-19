@@ -13,38 +13,48 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
+permissions:
+  checks: write
+  pull-requests: write
+  contents: write
+
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   # This workflow contains a single job called "build"
   build:
     # The type of runner that the job will run on
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:      
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - name: checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Setup java
         uses: actions/setup-java@v2
         with:
           distribution: 'temurin' # See 'Supported distributions' for available options
-          java-version: '11'
-          script: java --version
+          java-version: '17'
 
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: 35
           target: google_apis
           arch: x86_64
-          script: ./gradlew clean test connectedAndroidTest lint dokkaHtml
+          script: ./gradlew clean test connectedAndroidTest lint lib:dokkaGenerate
       - name: Publish test results
-        uses: EnricoMi/publish-unit-test-result-action/composite@v1
-        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: (!cancelled())
         with:
           files: |
             app/build/test-results/**/*.xml
@@ -54,13 +64,13 @@ jobs:
       - name: Convert unit tests coverage results
         run: |
           mkdir lib/build/reports/coverage/test || true
-          java -jar jacoco-0.8.7/lib/jacococli.jar report lib/build/jacoco/testReleaseUnitTest.exec --classfiles lib/build/tmp/kotlin-classes/release --html lib/build/reports/coverage/test || true
-          java -jar jacoco-0.8.7/lib/jacococli.jar report lib/build/jacoco/testReleaseUnitTest.exec --classfiles lib/build/tmp/kotlin-classes/release --xml lib/build/reports/coverage/test/report.xml || true
+          java -jar jacoco-0.8.13/lib/jacococli.jar report lib/build/jacoco/testReleaseUnitTest.exec --classfiles lib/build/tmp/kotlin-classes/debug --sourcefiles lib/src/main/java --html lib/build/reports/coverage/test || true
+          java -jar jacoco-0.8.13/lib/jacococli.jar report lib/build/jacoco/testReleaseUnitTest.exec --classfiles lib/build/tmp/kotlin-classes/debug --sourcefiles lib/src/main/java --xml lib/build/reports/coverage/test/report.xml || true
       - name: Send to Sonarqube
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: ./gradlew :lib:sonarqube
+        run: ./gradlew :lib:sonar
       - name: Deploy to GitHub Pages
         if: success()
         uses: crazy-max/ghaction-github-pages@v2

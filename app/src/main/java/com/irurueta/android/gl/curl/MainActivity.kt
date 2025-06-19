@@ -7,7 +7,11 @@ import android.util.TypedValue
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
 
+/**
+ * Main activity.
+ */
 class MainActivity : AppCompatActivity() {
 
     /**
@@ -56,7 +60,8 @@ class MainActivity : AppCompatActivity() {
             // on back images when being flipped
             val context = view?.context ?: return
             page.setColor(
-                ContextCompat.getColor(context, R.color.translucid_white),
+                ContextCompat.getColor(context,
+                    com.irurueta.android.gl.curl.app.R.color.translucid_white),
                 CurlPage.SIDE_BACK
             )
         }
@@ -70,9 +75,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         supportActionBar?.hide()
-        setContentView(R.layout.activity_main)
-        view = findViewById(R.id.curl_gl_texture_view)
-        title = findViewById(R.id.title)
+        setContentView(com.irurueta.android.gl.curl.app.R.layout.activity_main)
+        view = findViewById(com.irurueta.android.gl.curl.app.R.id.curl_gl_texture_view)
+        title = findViewById(com.irurueta.android.gl.curl.app.R.id.title)
 
         loadAllBitmaps()
 
@@ -127,7 +132,9 @@ class MainActivity : AppCompatActivity() {
      */
     private fun loadAllBitmaps() {
         // bitmaps need to be loaded in memory first for performance reasons
-        val drawables = listOf(R.drawable.image1, R.drawable.image2, R.drawable.image3)
+        val drawables = listOf(com.irurueta.android.gl.curl.app.R.drawable.image1,
+            com.irurueta.android.gl.curl.app.R.drawable.image2,
+            com.irurueta.android.gl.curl.app.R.drawable.image3)
         for (i in bitmaps.indices) {
             val bitmap = bitmaps[i]
             if (bitmap == null || bitmap.isRecycled) {
@@ -175,7 +182,7 @@ class MainActivity : AppCompatActivity() {
         rect.bottom = rect.top + imageHeight
 
         // draw resized bitmap using canvas
-        val b = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val b = createBitmap(width, height)
         b.eraseColor(Color.WHITE)
         val canvas = Canvas(b)
         canvas.drawBitmap(bitmap, null, rect, null)

@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.irurueta.android.gl.curl
 
 import android.animation.Animator
@@ -26,8 +27,8 @@ import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.LinearInterpolator
-import com.irurueta.android.gl.curl.CurlTextureView.Companion.CURL_LEFT
-import com.irurueta.android.gl.curl.CurlTextureView.Companion.CURL_RIGHT
+import com.irurueta.android.gl.curl.CurlGLSurfaceView.Companion.CURL_LEFT
+import com.irurueta.android.gl.curl.CurlGLSurfaceView.Companion.CURL_RIGHT
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -36,6 +37,9 @@ import kotlin.math.sqrt
 /**
  * Shows a paper curl like pagination using an OpenGL ES surface view.
  * This class is based on https://github.com/harism/android-pagecurl
+ *
+ * @property context the context.
+ * @property attrs the attributes.
  */
 class CurlGLSurfaceView @JvmOverloads constructor(
     context: Context,
@@ -111,6 +115,9 @@ class CurlGLSurfaceView @JvmOverloads constructor(
      */
     private var pageLeft: CurlMesh? = null
 
+    /**
+     * Right page mesh.
+     */
     private var pageRight: CurlMesh? = null
 
     /**
@@ -267,6 +274,9 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
         /**
          * Called when view size changes to redraw.
+         *
+         * @param width new width in pixels.
+         * @param height new height in pixels.
          */
         override fun onPageSizeChanged(width: Int, height: Int) {
             pageBitmapWidth = width
@@ -523,7 +533,7 @@ class CurlGLSurfaceView @JvmOverloads constructor(
         ) {
             handleTouchUp(event)
         }
-        return gestureDetector?.onTouchEvent(event) ?: true
+        return gestureDetector?.onTouchEvent(event) != false
     }
 
     /**
@@ -587,10 +597,12 @@ class CurlGLSurfaceView @JvmOverloads constructor(
                 // index wil be increased, so we curl right page towards the left
                 animateCurlRight(newIndex)
             }
+
             currentIndex > newIndex -> {
                 // index will be decreased, so we curl left page towards the right
                 animateCurlLeft(newIndex)
             }
+
             else -> {
                 // current index will not changed so we simply request a redraw
                 requestRender()
@@ -600,6 +612,7 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
     /**
      * Sets actual screen pixel margins.
+     *
      * @param left left margin expressed in pixels.
      * @param top top margin expressed in pixels.
      * @param right right margin expressed in pixels.
@@ -634,6 +647,7 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
     /**
      * Called when view changes its size.
+     *
      * @param w current width in pixels.
      * @param h current height in pixels.
      * @param oldw previous width in pixels.
@@ -668,10 +682,8 @@ class CurlGLSurfaceView @JvmOverloads constructor(
      */
     private fun updateLastCurlPos(x: Float, y: Float, pressure: Float = 0.0f, newIndex: Int?) {
         val curlRenderer = this.curlRenderer ?: return
-        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT)
-            ?: return
-        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT)
-            ?: return
+        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT) ?: return
+        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT) ?: return
 
         // Store pointer position.
         pointerPos.pos.set(x, y)
@@ -725,10 +737,8 @@ class CurlGLSurfaceView @JvmOverloads constructor(
      */
     private fun handleFirstScrollEvent(e1: MotionEvent) {
         val curlRenderer = this.curlRenderer ?: return
-        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT)
-            ?: return
-        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT)
-            ?: return
+        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT) ?: return
+        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT) ?: return
 
         cancelCurlAnimator()
 
@@ -797,10 +807,8 @@ class CurlGLSurfaceView @JvmOverloads constructor(
         newIndex: Int? = null
     ) {
         val curlRenderer = this.curlRenderer ?: return
-        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT)
-            ?: return
-        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT)
-            ?: return
+        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT) ?: return
+        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT) ?: return
         val pageProvider = pageProvider ?: return
 
         // Store pointer position.
@@ -887,6 +895,9 @@ class CurlGLSurfaceView @JvmOverloads constructor(
      * Updates current curl position.
      * This is used while touch pointer moves on the screen or while setting
      * current index with an animation.
+     *
+     * @param x x coordinate on the view expressed in pixels where last update occurs.
+     * @param y y coordinate on the view expressed in pixels where last update occurs.
      */
     private fun updateCurlPos(x: Float, y: Float, pressure: Float = 0.0f) {
         // Store pointer position.
@@ -906,21 +917,21 @@ class CurlGLSurfaceView @JvmOverloads constructor(
         // to swap texture ids only.
         val previousPageLeft = pageLeft
         val existedPreviousLeft = if (previousPageLeft != null) {
-            curlRenderer?.removeCurlMesh(previousPageLeft) ?: false
+            curlRenderer?.removeCurlMesh(previousPageLeft) == true
         } else {
             false
         }
 
         val previousPageRight = pageRight
         val existedPreviousRight = if (previousPageRight != null) {
-            curlRenderer?.removeCurlMesh(previousPageRight) ?: false
+            curlRenderer?.removeCurlMesh(previousPageRight) == true
         } else {
             false
         }
 
         val previousPageCurl = pageCurl
         val existedPreviousCurl = if (previousPageCurl != null) {
-            curlRenderer?.removeCurlMesh(previousPageCurl) ?: false
+            curlRenderer?.removeCurlMesh(previousPageCurl) == true
         } else {
             false
         }
@@ -991,13 +1002,34 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
                     private var scrolling: Boolean = false
 
+                    /**
+                     * Called when a single-tap up occurs.
+                     *
+                     * @param e The motion event.
+                     * @return true if the event is consumed, else false
+                     */
                     override fun onSingleTapUp(e: MotionEvent): Boolean {
-                        return pageClickListener?.onPageClick(this@CurlGLSurfaceView, currentIndex)
-                            ?: false
+                        return pageClickListener?.onPageClick(
+                            this@CurlGLSurfaceView,
+                            currentIndex
+                        ) == true
                     }
 
+                    /**
+                     * Called when a scroll occurs with the initial on down [MotionEvent] and the
+                     * current move [MotionEvent]. The distance in x and y is also supplied for
+                     * convenience.
+                     *
+                     * @param e1 The first down motion event that started the scrolling.
+                     * @param e2 The move motion event that triggered the current onScroll.
+                     * @param distanceX The distance along the X axis that has been scrolled since
+                     * the last call to onScroll.
+                     * @param distanceY The distance along the Y axis that has been scrolled since
+                     * the last call to onScroll.
+                     * @return true if the event is consumed, else false
+                     */
                     override fun onScroll(
-                        e1: MotionEvent,
+                        e1: MotionEvent?,
                         e2: MotionEvent,
                         distanceX: Float,
                         distanceY: Float
@@ -1005,8 +1037,21 @@ class CurlGLSurfaceView @JvmOverloads constructor(
                         return handleScroll(e1, e2)
                     }
 
+                    /**
+                     * Called when a scroll occurs with the initial on down [MotionEvent] and the
+                     * current move [MotionEvent]. The current velocity of the scroll is also
+                     * consumed.
+                     *
+                     * @param e1 The first down motion event that started the scrolling.
+                     * @param e2 The move motion event that triggered the current onFling.
+                     * @param velocityX The velocity of this fling measured in pixels per second
+                     * along the x axis.
+                     * @param velocityY The velocity of this fling measured in pixels per second
+                     * along the y axis.
+                     * @return true if the event is consumed, else false
+                     */
                     override fun onFling(
-                        e1: MotionEvent,
+                        e1: MotionEvent?,
                         e2: MotionEvent,
                         velocityX: Float,
                         velocityY: Float
@@ -1015,14 +1060,27 @@ class CurlGLSurfaceView @JvmOverloads constructor(
                         return handleScroll(e1, e2)
                     }
 
+                    /**
+                     * Called when a long press occurs with the initial on down [MotionEvent]
+                     * that triggered it.
+                     *
+                     * @param e The initial on down motion event that started the long press.
+                     */
                     override fun onDown(e: MotionEvent): Boolean {
                         // first touch event (reset scroll flag)
                         scrolling = false
                         return true
                     }
 
-                    private fun handleScroll(e1: MotionEvent, e2: MotionEvent): Boolean {
-                        if (!scrolling) {
+                    /**
+                     * Handles scroll events.
+                     *
+                     * @param e1 The first down motion event that started the scrolling.
+                     * @param e2 The move motion event that triggered the current onScroll.
+                     * @return true if the event is consumed, else false
+                     */
+                    private fun handleScroll(e1: MotionEvent?, e2: MotionEvent): Boolean {
+                        if (!scrolling && e1 != null) {
                             // this is the first scroll event
                             handleFirstScrollEvent(e1)
                             scrolling = true
@@ -1044,10 +1102,8 @@ class CurlGLSurfaceView @JvmOverloads constructor(
      */
     private fun animateCurlRight(newIndex: Int) {
         val curlRenderer = this.curlRenderer ?: return
-        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT)
-            ?: return
-        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT)
-            ?: return
+        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT) ?: return
+        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT) ?: return
 
         // since both left and right pages are at the same vertical position,
         // we can use either of the two to get a middle point as vertical coordinate
@@ -1079,10 +1135,8 @@ class CurlGLSurfaceView @JvmOverloads constructor(
      */
     private fun animateCurlLeft(newIndex: Int) {
         val curlRenderer = this.curlRenderer ?: return
-        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT)
-            ?: return
-        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT)
-            ?: return
+        val rightRect = curlRenderer.getPageRect(CurlRenderer.PAGE_RIGHT) ?: return
+        val leftRect = curlRenderer.getPageRect(CurlRenderer.PAGE_LEFT) ?: return
 
         // since both left and right pages are at the same vertical position,
         // we can use either of the two to get a middle point as vertical coordinate
@@ -1164,6 +1218,10 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
     /**
      * Sets pageCurl curl position.
+     *
+     * @param curlPos curl position.
+     * @param curlDir curl direction.
+     * @param radius curl radius.
      */
     private fun setCurlPos(curlPos: PointF, curlDir: PointF, radius: Double) {
         // First reposition curl so that page doesn't 'rip off' from book.
@@ -1289,6 +1347,7 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
                 curlState = CURL_RIGHT
             }
+
             CURL_LEFT -> {
                 val targetIndex = newIndex ?: (currentIndex - 1)
 
@@ -1344,6 +1403,8 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
     /**
      * Updates curl position.
+     *
+     * @param pointerPos pointer position.
      */
     private fun updateCurlPos(pointerPos: PointerPosition) {
         // Default curl radius.
@@ -1363,9 +1424,7 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
         // If curl happens on right page, or on left page on two page mode,
         // we'll calculate curl position from pointerPos.
-        if (curlState == CURL_RIGHT
-            || (curlState == CURL_LEFT && viewMode == SHOW_TWO_PAGES)
-        ) {
+        if (curlState == CURL_RIGHT || (curlState == CURL_LEFT && viewMode == SHOW_TWO_PAGES)) {
 
             curlDir.x = curlPos.x - dragStartPos.x
             curlDir.y = curlPos.y - dragStartPos.y
@@ -1519,8 +1578,14 @@ class CurlGLSurfaceView @JvmOverloads constructor(
 
         // Constants for animationTargetEvent
 
+        /**
+         * Sets animation target to left page.
+         */
         const val SET_CURL_TO_LEFT = 1
 
+        /**
+         * Sets animation target to right page.
+         */
         const val SET_CURL_TO_RIGHT = 2
 
         /**
@@ -1554,7 +1619,7 @@ class CurlGLSurfaceView @JvmOverloads constructor(
         const val ALLOW_LAST_PAGE_CURL = true
 
         /**
-         * Number of slipts to draw within meshes to generate curls
+         * Number of splits to draw within meshes to generate curls
          */
         const val MAX_CURL_SPLITS_IN_MESH = 10
 
@@ -1636,6 +1701,12 @@ class CurlGLSurfaceView @JvmOverloads constructor(
          * page number.
          * Index is a number between 0 and [pageCount]
          * If provided, back index is the index to be used on the back side of page.
+         *
+         * @param page page to be updated.
+         * @param width width of the page in pixels.
+         * @param height height of the page in pixels.
+         * @param index index of the page to be updated.
+         * @param backIndex (optional) index of the back side of the page.
          */
         fun updatePage(page: CurlPage, width: Int, height: Int, index: Int, backIndex: Int?)
     }
@@ -1646,6 +1717,9 @@ class CurlGLSurfaceView @JvmOverloads constructor(
     interface SizeChangedObserver {
         /**
          * Called once CurlView size changes.
+         *
+         * @param width new width of the view in pixels.
+         * @param height new height of the view in pixels.
          */
         fun onSizeChanged(width: Int, height: Int)
     }
@@ -1681,7 +1755,14 @@ class CurlGLSurfaceView @JvmOverloads constructor(
      * Simple holder for pointer position.
      */
     private class PointerPosition {
+        /**
+         * Position of the pointer.
+         */
         val pos: PointF = PointF()
+
+        /**
+         * Pressure of the pointer.
+         */
         var pressure: Float = 0.0f
     }
 }

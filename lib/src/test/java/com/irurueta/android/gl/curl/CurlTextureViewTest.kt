@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.irurueta.android.gl.curl
 
 import android.animation.ValueAnimator
@@ -43,10 +44,10 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.ALLOW_LAST_PAGE_CURL, view.allowLastPageCurl)
+        assertTrue(view.allowLastPageCurl)
         assertEquals(CurlTextureView.ANIMATION_DURATION_MILLIS, view.animationDurationTime)
         assertEquals(CurlTextureView.PAGE_JUMP_ANIMATION_DURATION_MILLIS, view.pageJumpDurationTime)
-        assertEquals(CurlTextureView.TOUCH_PRESSURE_ENABLED, view.enableTouchPressure)
+        assertFalse(view.enableTouchPressure)
         assertNull(view.pageProvider)
         assertEquals(CurlTextureView.CURL_NONE, view.curlState)
         assertEquals(0, view.currentIndex)
@@ -56,10 +57,10 @@ class CurlTextureViewTest {
         assertEquals(CurlTextureView.SHOW_ONE_PAGE, view.viewMode)
         assertNull(view.pageClickListener)
         assertEquals(CurlTextureView.MAX_CURL_SPLITS_IN_MESH, view.maxCurlSplitsInMesh)
-        assertEquals(CurlTextureView.DRAW_CURL_POSITION_IN_MESH, view.drawCurlPositionInMesh)
-        assertEquals(CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH, view.drawPolygonOutlinesInMesh)
-        assertEquals(CurlTextureView.DRAW_SHADOW_IN_MESH, view.drawShadowInMesh)
-        assertEquals(CurlTextureView.DRAW_TEXTURE_IN_MESH, view.drawTextureInMesh)
+        assertFalse(view.drawCurlPositionInMesh)
+        assertFalse(view.drawPolygonOutlinesInMesh)
+        assertTrue(view.drawShadowInMesh)
+        assertTrue(view.drawTextureInMesh)
         assertTrue(CurlTextureView.SHADOW_INNER_COLOR_IN_MESH.contentEquals(view.shadowInnerColorInMesh))
         assertTrue(CurlTextureView.SHADOW_OUTER_COLOR_IN_MESH.contentEquals(view.shadowOuterColorInMesh))
         assertEquals(
@@ -982,13 +983,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.ALLOW_LAST_PAGE_CURL, view.allowLastPageCurl)
+        assertTrue(view.allowLastPageCurl)
 
         // set new value
-        view.allowLastPageCurl = !CurlTextureView.ALLOW_LAST_PAGE_CURL
+        view.allowLastPageCurl = false
 
         // check
-        assertEquals(!CurlTextureView.ALLOW_LAST_PAGE_CURL, view.allowLastPageCurl)
+        @Suppress("KotlinConstantConditions")
+        assertFalse(view.allowLastPageCurl)
     }
 
     @Test
@@ -1040,13 +1042,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.TOUCH_PRESSURE_ENABLED, view.enableTouchPressure)
+        assertFalse(view.enableTouchPressure)
 
         // set new value
-        view.enableTouchPressure = !CurlTextureView.TOUCH_PRESSURE_ENABLED
+        view.enableTouchPressure = true
 
         // check
-        assertEquals(!CurlTextureView.TOUCH_PRESSURE_ENABLED, view.enableTouchPressure)
+        @Suppress("KotlinConstantConditions")
+        assertTrue(view.enableTouchPressure)
     }
 
     @Test
@@ -1116,14 +1119,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_CURL_POSITION_IN_MESH, view.drawCurlPositionInMesh)
+        assertFalse(view.drawCurlPositionInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawCurlPositionInMesh = !CurlTextureView.DRAW_CURL_POSITION_IN_MESH
+        view.drawCurlPositionInMesh = true
 
         // check
-        assertEquals(!CurlTextureView.DRAW_CURL_POSITION_IN_MESH, view.drawCurlPositionInMesh)
+        assertTrue(view.drawCurlPositionInMesh)
     }
 
     @Test
@@ -1131,14 +1134,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_CURL_POSITION_IN_MESH, view.drawCurlPositionInMesh)
+        assertFalse(view.drawCurlPositionInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawCurlPositionInMesh = CurlTextureView.DRAW_CURL_POSITION_IN_MESH
+        view.drawCurlPositionInMesh = true
 
         // check
-        assertEquals(CurlTextureView.DRAW_CURL_POSITION_IN_MESH, view.drawCurlPositionInMesh)
+        assertTrue(view.drawCurlPositionInMesh)
     }
 
     @Test
@@ -1146,7 +1149,7 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_CURL_POSITION_IN_MESH, view.drawCurlPositionInMesh)
+        assertFalse(view.drawCurlPositionInMesh)
         assertNull(view.pageProvider)
 
         // set page provider
@@ -1162,14 +1165,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH, view.drawPolygonOutlinesInMesh)
+        assertFalse(view.drawPolygonOutlinesInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawPolygonOutlinesInMesh = !CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH
+        view.drawPolygonOutlinesInMesh = true
 
         // check
-        assertEquals(!CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH, view.drawPolygonOutlinesInMesh)
+        assertTrue(view.drawPolygonOutlinesInMesh)
     }
 
     @Test
@@ -1177,14 +1180,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH, view.drawPolygonOutlinesInMesh)
+        assertFalse(view.drawPolygonOutlinesInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawPolygonOutlinesInMesh = CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH
+        view.drawPolygonOutlinesInMesh = true
 
         // check
-        assertEquals(CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH, view.drawPolygonOutlinesInMesh)
+        assertTrue(view.drawPolygonOutlinesInMesh)
     }
 
     @Test
@@ -1192,7 +1195,7 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_POLYGON_OUTLINES_IN_MESH, view.drawPolygonOutlinesInMesh)
+        assertFalse(view.drawPolygonOutlinesInMesh)
         assertNull(view.pageProvider)
 
         // set page provider
@@ -1208,14 +1211,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_SHADOW_IN_MESH, view.drawShadowInMesh)
+        assertTrue(view.drawShadowInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawShadowInMesh = !CurlTextureView.DRAW_SHADOW_IN_MESH
+        view.drawShadowInMesh = false
 
         // check
-        assertEquals(!CurlTextureView.DRAW_SHADOW_IN_MESH, view.drawShadowInMesh)
+        assertFalse(view.drawShadowInMesh)
     }
 
     @Test
@@ -1223,14 +1226,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_SHADOW_IN_MESH, view.drawShadowInMesh)
+        assertTrue(view.drawShadowInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawShadowInMesh = CurlTextureView.DRAW_SHADOW_IN_MESH
+        view.drawShadowInMesh = false
 
         // check
-        assertEquals(CurlTextureView.DRAW_SHADOW_IN_MESH, view.drawShadowInMesh)
+        assertFalse(view.drawShadowInMesh)
     }
 
     @Test
@@ -1238,7 +1241,7 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_SHADOW_IN_MESH, view.drawShadowInMesh)
+        assertTrue(view.drawShadowInMesh)
         assertNull(view.pageProvider)
 
         // set page provider
@@ -1254,14 +1257,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_TEXTURE_IN_MESH, view.drawTextureInMesh)
+        assertTrue(view.drawTextureInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawTextureInMesh = !CurlTextureView.DRAW_TEXTURE_IN_MESH
+        view.drawTextureInMesh = false
 
         // check
-        assertEquals(!CurlTextureView.DRAW_TEXTURE_IN_MESH, view.drawTextureInMesh)
+        assertFalse(view.drawTextureInMesh)
     }
 
     @Test
@@ -1269,14 +1272,14 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_TEXTURE_IN_MESH, view.drawTextureInMesh)
+        assertTrue(view.drawTextureInMesh)
         assertNull(view.pageProvider)
 
         // set new value
-        view.drawTextureInMesh = CurlTextureView.DRAW_TEXTURE_IN_MESH
+        view.drawTextureInMesh = false
 
         // check
-        assertEquals(CurlTextureView.DRAW_TEXTURE_IN_MESH, view.drawTextureInMesh)
+        assertFalse(view.drawTextureInMesh)
     }
 
     @Test
@@ -1284,7 +1287,7 @@ class CurlTextureViewTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val view = CurlTextureView(context)
 
-        assertEquals(CurlTextureView.DRAW_TEXTURE_IN_MESH, view.drawTextureInMesh)
+        assertTrue(view.drawTextureInMesh)
         assertNull(view.pageProvider)
 
         // set page provider
@@ -2341,9 +2344,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateLastCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -2360,13 +2363,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(0.99791664f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
     }
 
@@ -2411,9 +2414,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateLastCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -2430,13 +2433,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(0.99791664f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(3.0f, pressure2)
     }
 
@@ -2480,9 +2483,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         // set curlState
@@ -2513,13 +2516,13 @@ class CurlTextureViewTest {
         requireNotNull(targetIndex)
         assertEquals(1, targetIndex)
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(0.99791664f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         val animationStartTime2: Long? = view.getPrivateProperty("animationStartTime")
@@ -2576,9 +2579,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         // set curlState
@@ -2609,13 +2612,13 @@ class CurlTextureViewTest {
         requireNotNull(targetIndex)
         assertEquals(1, targetIndex)
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(0.99791664f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         val animationStartTime2: Long? = view.getPrivateProperty("animationStartTime")
@@ -2672,9 +2675,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         // set curlState
@@ -2705,13 +2708,13 @@ class CurlTextureViewTest {
         requireNotNull(targetIndex)
         assertEquals(1, targetIndex)
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(1.6875f, pos2.x)
         assertEquals(0.99791664f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         val animationStartTime2: Long? = view.getPrivateProperty("animationStartTime")
@@ -3104,9 +3107,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateFirstCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -3123,13 +3126,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(0.99791664f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         assertEquals(CurlTextureView.CURL_NONE, view.curlState)
@@ -3181,9 +3184,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateFirstCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -3200,13 +3203,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(0.99791664f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(3.0f, pressure2)
 
         assertEquals(CurlTextureView.CURL_NONE, view.curlState)
@@ -3257,9 +3260,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateFirstCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -3276,13 +3279,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(5.0f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         assertEquals(CurlTextureView.CURL_NONE, view.curlState)
@@ -3333,9 +3336,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateFirstCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -3352,13 +3355,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(-3.0f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         assertEquals(CurlTextureView.CURL_NONE, view.curlState)
@@ -3410,9 +3413,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateFirstCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -3429,13 +3432,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(-3.0f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         assertEquals(CurlTextureView.CURL_NONE, view.curlState)
@@ -3657,9 +3660,9 @@ class CurlTextureViewTest {
         assertEquals(0.0f, pos1.x)
         assertEquals(0.0f, pos1.y)
 
-        val pressureField = pointerPositionClass?.getDeclaredField("pressure")
-        pressureField?.isAccessible = true
-        val pressure1: Float? = pressureField?.getFloat(pointerPos)
+        val pressureField = pointerPositionClass.getDeclaredField("pressure")
+        pressureField.isAccessible = true
+        val pressure1: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.0f, pressure1)
 
         val updateFirstCurlPosMethod = CurlTextureView::class.java.getDeclaredMethod(
@@ -3676,13 +3679,13 @@ class CurlTextureViewTest {
         // check
         assertNull(view.getPrivateProperty("targetIndex"))
 
-        val pos2: PointF? = posField?.get(pointerPos) as PointF?
+        val pos2: PointF? = posField.get(pointerPos) as PointF?
         requireNotNull(pos2)
 
         assertEquals(-0.56145835f, pos2.x)
         assertEquals(-3.0f, pos2.y)
 
-        val pressure2: Float? = pressureField?.getFloat(pointerPos)
+        val pressure2: Float? = pressureField.getFloat(pointerPos)
         assertEquals(0.8f, pressure2)
 
         assertEquals(CurlTextureView.CURL_NONE, view.curlState)

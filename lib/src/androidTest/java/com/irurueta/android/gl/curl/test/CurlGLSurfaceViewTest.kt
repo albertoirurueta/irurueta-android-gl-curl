@@ -22,9 +22,9 @@ import android.util.TypedValue
 import android.view.View
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.test.ext.junit.rules.activityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.filters.RequiresDevice
-import androidx.test.rule.ActivityTestRule
+import androidx.test.internal.runner.junit4.statement.UiThreadStatement
 import com.irurueta.android.gl.curl.InstrumentationTestHelper
 import com.irurueta.android.gl.curl.CurlGLSurfaceView
 import com.irurueta.android.gl.curl.CurlPage
@@ -35,12 +35,11 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-@RequiresDevice
 @RunWith(AndroidJUnit4::class)
 class CurlGLSurfaceViewTest {
 
     @get:Rule
-    val activityRule = ActivityTestRule(CurlGLSurfaceViewActivity::class.java, true)
+    val rule = activityScenarioRule<CurlGLSurfaceViewActivity>()
 
     private var activity: CurlGLSurfaceViewActivity? = null
     private var view: CurlGLSurfaceView? = null
@@ -121,12 +120,14 @@ class CurlGLSurfaceViewTest {
 
     @Before
     fun setUp() {
-        activity = activityRule.activity
-        view = activity?.findViewById(R.id.curl_gl_surface_view_test)
-        textView = activity?.findViewById(R.id.title)
-        reset()
+        rule.scenario.onActivity { activity ->
+            this.activity = activity
+            view = activity.findViewById(R.id.curl_gl_surface_view_test)
+            textView = activity?.findViewById(R.id.title)
+            reset()
 
-        loadAllBitmaps()
+            loadAllBitmaps()
+        }
     }
 
     @After
@@ -141,10 +142,10 @@ class CurlGLSurfaceViewTest {
     @Test
     fun constructor_whenNotAttached_setsDefaultValues() {
         val activity = this.activity ?: return fail()
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             val view = CurlGLSurfaceView(activity)
 
-            assertEquals(CurlGLSurfaceView.ALLOW_LAST_PAGE_CURL, view.allowLastPageCurl)
+            assertTrue(view.allowLastPageCurl)
             assertEquals(
                 CurlGLSurfaceView.ANIMATION_DURATION_MILLIS,
                 view.animationDurationTime
@@ -153,7 +154,7 @@ class CurlGLSurfaceViewTest {
                 CurlGLSurfaceView.PAGE_JUMP_ANIMATION_DURATION_MILLIS,
                 view.pageJumpDurationTime
             )
-            assertEquals(CurlGLSurfaceView.TOUCH_PRESSURE_ENABLED, view.enableTouchPressure)
+            assertFalse(view.enableTouchPressure)
             assertNull(view.pageProvider)
             assertEquals(CurlGLSurfaceView.CURL_NONE, view.curlState)
             assertEquals(0, view.currentIndex)
@@ -171,13 +172,13 @@ class CurlGLSurfaceViewTest {
     @Test
     fun constructor_whenAttached_setsDefaultValues() {
         val view = this.view ?: return fail()
-        assertEquals(CurlGLSurfaceView.ALLOW_LAST_PAGE_CURL, view.allowLastPageCurl)
+        assertTrue(view.allowLastPageCurl)
         assertEquals(CurlGLSurfaceView.ANIMATION_DURATION_MILLIS, view.animationDurationTime)
         assertEquals(
             CurlGLSurfaceView.PAGE_JUMP_ANIMATION_DURATION_MILLIS,
             view.pageJumpDurationTime
         )
-        assertEquals(CurlGLSurfaceView.TOUCH_PRESSURE_ENABLED, view.enableTouchPressure)
+        assertFalse(view.enableTouchPressure)
         assertNull(view.pageProvider)
         assertEquals(CurlGLSurfaceView.CURL_NONE, view.curlState)
         assertEquals(0, view.currentIndex)
@@ -242,7 +243,7 @@ class CurlGLSurfaceViewTest {
         Thread.sleep(SLEEP)
 
         // change current index
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setCurrentIndex(1)
         }
 
@@ -253,7 +254,7 @@ class CurlGLSurfaceViewTest {
         Thread.sleep(SLEEP)
 
         // change current index again
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setCurrentIndex(2)
         }
 
@@ -264,7 +265,7 @@ class CurlGLSurfaceViewTest {
         Thread.sleep(SLEEP)
 
         // change current index again
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setCurrentIndex(0)
         }
 
@@ -290,7 +291,7 @@ class CurlGLSurfaceViewTest {
         reset()
 
         // change current index
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(1)
         }
 
@@ -299,7 +300,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
 
         // change current index again
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(2)
         }
 
@@ -308,7 +309,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(2, view.currentIndex)
 
         // change current index again
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(0)
         }
 
@@ -322,7 +323,7 @@ class CurlGLSurfaceViewTest {
         val view = this.view ?: return fail()
         assertEquals(CurlGLSurfaceView.SHOW_ONE_PAGE, view.viewMode)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.viewMode = CurlGLSurfaceView.SHOW_TWO_PAGES
         }
 
@@ -338,7 +339,7 @@ class CurlGLSurfaceViewTest {
         reset()
 
         // change current index
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(1)
         }
 
@@ -347,7 +348,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
 
         // change current index again
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(2)
         }
 
@@ -356,7 +357,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(2, view.currentIndex)
 
         // change current index again
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(0)
         }
 
@@ -388,7 +389,7 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
@@ -404,7 +405,7 @@ class CurlGLSurfaceViewTest {
         reset()
 
         // change current index
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(1)
         }
 
@@ -417,7 +418,7 @@ class CurlGLSurfaceViewTest {
     fun setProportionalMargins_drawsPagesWithTransparentBackground() {
         val view = this.view ?: return fail()
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setProportionalMargins(0.1f, 0.1f, 0.1f, 0.1f)
         }
 
@@ -433,7 +434,7 @@ class CurlGLSurfaceViewTest {
         reset()
 
         // change current index
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(1)
         }
 
@@ -449,7 +450,7 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
@@ -533,7 +534,7 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
@@ -592,7 +593,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(0, view.currentIndex)
         assertEquals(CurlGLSurfaceView.MAX_CURL_SPLITS_IN_MESH, view.maxCurlSplitsInMesh)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.maxCurlSplitsInMesh = 20
         }
 
@@ -606,7 +607,7 @@ class CurlGLSurfaceViewTest {
         reset()
 
         // change current index
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setSmoothCurrentIndex(1)
         }
 
@@ -622,14 +623,14 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
         assertEquals(0, view.currentIndex)
         assertFalse(view.drawCurlPositionInMesh)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.drawCurlPositionInMesh = true
         }
 
@@ -667,14 +668,14 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
         assertEquals(0, view.currentIndex)
         assertFalse(view.drawPolygonOutlinesInMesh)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.drawPolygonOutlinesInMesh = true
         }
 
@@ -712,14 +713,14 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
         assertEquals(0, view.currentIndex)
         assertTrue(view.drawShadowInMesh)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.drawShadowInMesh = false
         }
 
@@ -757,14 +758,14 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
         assertEquals(0, view.currentIndex)
         assertTrue(view.drawTextureInMesh)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.drawTextureInMesh = false
         }
 
@@ -802,7 +803,7 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
@@ -810,7 +811,7 @@ class CurlGLSurfaceViewTest {
         assertTrue(CurlGLSurfaceView.SHADOW_INNER_COLOR_IN_MESH.contentEquals(view.shadowInnerColorInMesh))
 
         val color = floatArrayOf(1.0f, 0.0f, 0.0f, 0.5f)
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.shadowInnerColorInMesh = color
         }
 
@@ -848,7 +849,7 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
@@ -856,7 +857,7 @@ class CurlGLSurfaceViewTest {
         assertTrue(CurlGLSurfaceView.SHADOW_OUTER_COLOR_IN_MESH.contentEquals(view.shadowOuterColorInMesh))
 
         val color = floatArrayOf(1.0f, 0.0f, 0.0f, 0.0f)
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.shadowOuterColorInMesh = color
         }
 
@@ -894,7 +895,7 @@ class CurlGLSurfaceViewTest {
         val topMargin = textView.measuredHeight
         val margin = dp2px(MARGIN_DP)
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.setMargins(margin, topMargin, margin, margin)
         }
 
@@ -904,7 +905,7 @@ class CurlGLSurfaceViewTest {
             view.colorFactorOffsetInMesh
         )
 
-        activityRule.runOnUiThread {
+        UiThreadStatement.runOnUiThread {
             view.colorFactorOffsetInMesh = 1.0f
         }
 

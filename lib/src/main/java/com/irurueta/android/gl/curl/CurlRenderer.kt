@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.irurueta.android.gl.curl
 
 import android.graphics.Color
@@ -47,6 +48,9 @@ class CurlRenderer(
      */
     private val curlMeshes: Vector<CurlMesh> = Vector()
 
+    /**
+     * Page margins.
+     */
     private val margins: RectF = RectF()
 
     /**
@@ -81,6 +85,8 @@ class CurlRenderer(
 
     /**
      * Adds CurlMesh to this renderer.
+     *
+     * @param mesh mesh to be added.
      */
     @Synchronized
     fun addCurlMesh(mesh: CurlMesh) {
@@ -91,6 +97,8 @@ class CurlRenderer(
     /**
      * Returns rect reserved for left or right page. Value page should be
      * [PAGE_LEFT] or [PAGE_RIGHT].
+     *
+     * @param page page to return rect for.
      */
     fun getPageRect(page: Int): RectF? {
         return when (page) {
@@ -100,6 +108,11 @@ class CurlRenderer(
         }
     }
 
+    /**
+     * Draws curl meshes.
+     *
+     * @param gl OpenGL context to draw to.
+     */
     @Synchronized
     override fun onDrawFrame(gl: GL10?) {
         if (gl == null) return
@@ -126,6 +139,13 @@ class CurlRenderer(
         }
     }
 
+    /**
+     * Called once surface is created.
+     *
+     * @param gl OpenGL context.
+     * @param width surface width expressed in pixels.
+     * @param height surface height expressed in pixels.
+     */
     override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
         if (gl == null) return
 
@@ -155,6 +175,12 @@ class CurlRenderer(
         gl.glLoadIdentity()
     }
 
+    /**
+     * Called once surface is created.
+     *
+     * @param gl OpenGL context.
+     * @param config EGL configuration.
+     */
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
         if (gl == null) return
 
@@ -170,7 +196,12 @@ class CurlRenderer(
         observer?.onSurfaceCreated()
     }
 
-    @Suppress("ControlFlowWithEmptyBody")
+    /**
+     * Removes CurlMesh from this renderer.
+     *
+     * @param mesh mesh to be removed.
+     * @return true if mesh was removed, false otherwise.
+     */
     @Synchronized
     fun removeCurlMesh(mesh: CurlMesh) : Boolean {
         // Remove repeated instance until no more instances remain
@@ -184,6 +215,7 @@ class CurlRenderer(
 
     /**
      * Sets actual screen pixel margins.
+     *
      * @param left left margin expressed in pixels.
      * @param top top margin expressed in pixels.
      * @param right right margin expressed in pixels.
@@ -220,6 +252,8 @@ class CurlRenderer(
     /**
      * Sets visible page count to one or two. Should be either [SHOW_ONE_PAGE] or
      * [SHOW_TWO_PAGES].
+     *
+     * @param viewMode view mode to be set.
      */
     @Synchronized
     fun setViewMode(viewMode: Int) {
@@ -231,16 +265,28 @@ class CurlRenderer(
 
     /**
      * Translates screen coordinates into view coordinates.
+     *
+     * @param pt point to be translated.
      */
     fun translate(pt: PointF) {
         pt.x = viewRect.left + (viewRect.width() * pt.x / viewportWidth)
         pt.y = viewRect.top + (viewRect.height() * pt.y / viewportHeight)
     }
 
+    /**
+     * Inverse translates screen coordinates into view coordinates.
+     *
+     * @param x x-coordinate to be translated.
+     */
     fun inverseTranslateX(x: Float): Float {
         return viewportWidth * (x - viewRect.left) / viewRect.width()
     }
 
+    /**
+     * Inverse translates screen coordinates into view coordinates.
+     *
+     * @param y y-coordinate to be translated.
+     */
     fun inverseTranslateY(y: Float): Float {
         return viewportHeight * (y - viewRect.top) / viewRect.height()
     }
@@ -326,6 +372,9 @@ class CurlRenderer(
         /**
          * Called once page size is changed. Width and height tell the page size
          * in pixels making it possible to update textures accordingly.
+         *
+         * @param width new page width in pixels.
+         * @param height new page height in pixels.
          */
         fun onPageSizeChanged(width: Int, height: Int)
 

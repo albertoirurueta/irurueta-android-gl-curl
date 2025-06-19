@@ -13,14 +13,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.irurueta.android.gl.curl
 
 import android.graphics.Bitmap
 import android.graphics.PointF
 import android.graphics.RectF
+import io.mockk.impl.annotations.MockK
+import io.mockk.junit4.MockKRule
 import io.mockk.justRun
-import io.mockk.mockk
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -29,16 +32,22 @@ import javax.microedition.khronos.opengles.GL10
 @RunWith(RobolectricTestRunner::class)
 class CurlMeshTest {
 
+    @get:Rule
+    val mockkRule = MockKRule(this)
+
+    @MockK
+    private lateinit var gl: GL10
+
     @Test
     fun constructor_whenDefaultValues_setsExpectedValues() {
         val mesh = CurlMesh(MAX_CURL_SPLITS)
 
         // check values
         assertEquals(MAX_CURL_SPLITS, mesh.getPrivateProperty("maxCurlSplits"))
-        assertEquals(CurlMesh.DRAW_CURL_POSITION, mesh.drawCurlPosition)
-        assertEquals(CurlMesh.DRAW_POLYGON_OUTLINES, mesh.drawPolygonOutlines)
-        assertEquals(CurlMesh.DRAW_SHADOW, mesh.drawShadow)
-        assertEquals(CurlMesh.DRAW_TEXTURE, mesh.drawTexture)
+        assertFalse(mesh.drawCurlPosition)
+        assertFalse(mesh.drawPolygonOutlines)
+        assertTrue(mesh.drawShadow)
+        assertTrue(mesh.drawTexture)
         assertEquals(CurlMesh.SHADOW_INNER_COLOR, mesh.shadowInnerColor)
         assertEquals(CurlMesh.SHADOW_OUTER_COLOR, mesh.shadowOuterColor)
         assertNotNull(mesh.texturePage)
@@ -427,7 +436,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {
@@ -502,7 +510,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {
@@ -583,7 +590,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {
@@ -662,7 +668,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {
@@ -742,7 +747,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {
@@ -819,7 +823,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {
@@ -900,7 +903,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {
@@ -1014,7 +1016,6 @@ class CurlMeshTest {
         assertTrue(mesh.drawTexture)
 
         // prepare mock
-        val gl = mockk<GL10>()
         justRun { gl.glGenTextures(2, any(), 0) }
         justRun { gl.glBindTexture(GL10.GL_TEXTURE_2D, 0) }
         justRun {

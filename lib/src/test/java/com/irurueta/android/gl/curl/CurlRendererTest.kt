@@ -13,16 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package com.irurueta.android.gl.curl
 
 import android.graphics.Color
 import android.graphics.PointF
 import android.graphics.RectF
 import io.mockk.Called
+import io.mockk.clearAllMocks
+import io.mockk.impl.annotations.MockK
+import io.mockk.junit4.MockKRule
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.unmockkAll
 import io.mockk.verify
+import org.junit.After
 import org.junit.Assert.*
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -32,6 +39,24 @@ import javax.microedition.khronos.opengles.GL10
 
 @RunWith(RobolectricTestRunner::class)
 class CurlRendererTest {
+
+    @get:Rule
+    val mockkRule = MockKRule(this)
+
+    @MockK
+    private lateinit var observer: CurlRenderer.Observer
+
+    @MockK
+    private lateinit var gl: GL10
+
+    @MockK
+    private lateinit var config: EGLConfig
+
+    @After
+    fun afterTest() {
+        clearAllMocks()
+        unmockkAll()
+    }
 
     @Test
     fun constructor_whenNoParameters_setsDefaultValues() {
@@ -55,7 +80,6 @@ class CurlRendererTest {
 
     @Test
     fun constructor_whenProvidedParameters_setsDefaultValues() {
-        val observer = mockk<CurlRenderer.Observer>()
         val renderer = CurlRenderer(observer, true)
 
         assertSame(observer, renderer.getPrivateProperty("observer"))
@@ -125,7 +149,6 @@ class CurlRendererTest {
 
     @Test
     fun onDrawFrame_whenNoGL_makesNoAction() {
-        val observer = mockk<CurlRenderer.Observer>()
         val renderer = CurlRenderer(observer)
 
         renderer.onDrawFrame(null)
@@ -135,11 +158,9 @@ class CurlRendererTest {
 
     @Test
     fun onDrawFrame_whenGlAndNoPerspectiveProjectionAndNoCurlMeshes_drawsFrame() {
-        val observer = mockk<CurlRenderer.Observer>()
         justRun { observer.onDrawFrame() }
         val renderer = CurlRenderer(observer)
 
-        val gl = mockk<GL10>()
         justRun { gl.glClearColor(0.0f, 0.0f, 0.0f, 0.0f) }
         justRun { gl.glClear(GL10.GL_COLOR_BUFFER_BIT) }
         justRun { gl.glLoadIdentity() }
@@ -153,7 +174,6 @@ class CurlRendererTest {
     fun onDrawFrame_whenPerspectiveProjection_drawsFrame() {
         val renderer = CurlRenderer(usePerspectiveProjection = true)
 
-        val gl = mockk<GL10>()
         justRun { gl.glClearColor(0.0f, 0.0f, 0.0f, 0.0f) }
         justRun { gl.glClear(GL10.GL_COLOR_BUFFER_BIT) }
         justRun { gl.glLoadIdentity() }
@@ -168,7 +188,6 @@ class CurlRendererTest {
     fun onDrawFrame_whenCurlMeshes_drawsFrame() {
         val renderer = CurlRenderer()
 
-        val gl = mockk<GL10>()
         justRun { gl.glClearColor(0.0f, 0.0f, 0.0f, 0.0f) }
         justRun { gl.glClear(GL10.GL_COLOR_BUFFER_BIT) }
         justRun { gl.glLoadIdentity() }
@@ -185,7 +204,6 @@ class CurlRendererTest {
 
     @Test
     fun onSurfaceChanged_whenNoGL_makesNoAction() {
-        val observer = mockk<CurlRenderer.Observer>()
         val renderer = CurlRenderer(observer)
 
         renderer.onSurfaceChanged(null, WIDTH, HEIGHT)
@@ -200,7 +218,6 @@ class CurlRendererTest {
 
     @Test
     fun onSurfaceChanged_whenGLOnePageModeAndOrtho_reloadsCamera() {
-        val observer = mockk<CurlRenderer.Observer>()
         justRun { observer.onPageSizeChanged(any(), any()) }
         val renderer = CurlRenderer(observer)
 
@@ -208,7 +225,6 @@ class CurlRendererTest {
         assertEquals(CurlRenderer.SHOW_ONE_PAGE, viewMode)
         assertFalse(renderer.usePerspectiveProjection)
 
-        val gl = mockk<GL10>()
         justRun { gl.glViewport(0, 0, WIDTH, HEIGHT) }
         justRun { gl.glMatrixMode(GL10.GL_PROJECTION) }
         justRun { gl.glLoadIdentity() }
@@ -229,7 +245,6 @@ class CurlRendererTest {
 
     @Test
     fun onSurfaceChanged_whenGLTwoPagesModeAndProjective_reloadsCamera() {
-        val observer = mockk<CurlRenderer.Observer>()
         justRun { observer.onPageSizeChanged(any(), any()) }
         val renderer = CurlRenderer(observer, usePerspectiveProjection = true)
         renderer.setViewMode(CurlRenderer.SHOW_TWO_PAGES)
@@ -238,7 +253,6 @@ class CurlRendererTest {
         assertEquals(CurlRenderer.SHOW_TWO_PAGES, viewMode)
         assertTrue(renderer.usePerspectiveProjection)
 
-        val gl = mockk<GL10>()
         justRun { gl.glViewport(0, 0, WIDTH, HEIGHT) }
         justRun { gl.glMatrixMode(GL10.GL_PROJECTION) }
         justRun { gl.glLoadIdentity() }
@@ -259,10 +273,8 @@ class CurlRendererTest {
 
     @Test
     fun onSurfaceCreate_whenNoGl_makesNoAction() {
-        val observer = mockk<CurlRenderer.Observer>()
         val renderer = CurlRenderer(observer)
 
-        val config = mockk<EGLConfig>()
         renderer.onSurfaceCreated(null, config)
 
         verify { observer wasNot Called }
@@ -270,11 +282,9 @@ class CurlRendererTest {
 
     @Test
     fun onSurfaceCreated_whenGl_setupsGl() {
-        val observer = mockk<CurlRenderer.Observer>()
         justRun { observer.onSurfaceCreated() }
         val renderer = CurlRenderer(observer)
 
-        val gl = mockk<GL10>()
         justRun { gl.glClearColor(0.0f, 0.0f, 0.0f, 1.0f) }
         justRun { gl.glShadeModel(GL10.GL_SMOOTH) }
         justRun { gl.glHint(GL10.GL_PERSPECTIVE_CORRECTION_HINT, GL10.GL_NICEST) }
@@ -283,7 +293,6 @@ class CurlRendererTest {
         justRun { gl.glEnable(GL10.GL_LINE_SMOOTH) }
         justRun { gl.glDisable(GL10.GL_DEPTH_TEST) }
         justRun { gl.glDisable(GL10.GL_CULL_FACE) }
-        val config = mockk<EGLConfig>()
         renderer.onSurfaceCreated(gl, config)
 
         verify(exactly = 1) { observer.onSurfaceCreated() }

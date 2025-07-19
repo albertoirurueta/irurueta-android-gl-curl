@@ -23,7 +23,6 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.test.ext.junit.rules.activityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.filters.RequiresDevice
 import androidx.test.internal.runner.junit4.statement.UiThreadStatement
 import com.irurueta.android.glutils.GLTextureView
 import com.irurueta.android.gl.curl.InstrumentationTestHelper
@@ -31,6 +30,7 @@ import com.irurueta.android.gl.curl.CurlPage
 import com.irurueta.android.gl.curl.CurlTextureView
 import org.junit.After
 import org.junit.Assert.*
+import org.junit.Assume.assumeFalse
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -39,7 +39,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-@RequiresDevice
 @RunWith(AndroidJUnit4::class)
 class CurlTextureViewTest {
 
@@ -124,6 +123,9 @@ class CurlTextureViewTest {
 
     @Before
     fun setUp() {
+        // requires a real device
+        assumeFalse(InstrumentationTestHelper.isEmulator())
+
         rule.scenario.onActivity { activity ->
             this.activity = activity
             view = activity.findViewById(R.id.curl_texture_view_test)

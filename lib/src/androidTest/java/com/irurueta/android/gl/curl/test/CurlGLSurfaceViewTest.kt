@@ -24,19 +24,18 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.test.ext.junit.rules.activityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.filters.RequiresDevice
 import androidx.test.internal.runner.junit4.statement.UiThreadStatement
 import com.irurueta.android.gl.curl.InstrumentationTestHelper
 import com.irurueta.android.gl.curl.CurlGLSurfaceView
 import com.irurueta.android.gl.curl.CurlPage
 import org.junit.*
 import org.junit.Assert.*
+import org.junit.Assume.assumeFalse
 import org.junit.runner.RunWith
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-@RequiresDevice
 @RunWith(AndroidJUnit4::class)
 class CurlGLSurfaceViewTest {
 
@@ -122,6 +121,9 @@ class CurlGLSurfaceViewTest {
 
     @Before
     fun setUp() {
+        // requires a real device
+        assumeFalse(InstrumentationTestHelper.isEmulator())
+
         rule.scenario.onActivity { activity ->
             this.activity = activity
             view = activity.findViewById(R.id.curl_gl_surface_view_test)

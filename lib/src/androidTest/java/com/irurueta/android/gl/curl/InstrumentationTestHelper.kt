@@ -15,6 +15,7 @@
  */
 package com.irurueta.android.gl.curl
 
+import android.os.Build
 import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.View
@@ -64,7 +65,7 @@ object InstrumentationTestHelper {
         inst.sendPointerSync(event)
         inst.waitForIdleSync()
 
-        for (i in 1..stepCount) {
+        (1..stepCount).forEach { _ ->
             x += xStep
             y += yStep
             eventTime = SystemClock.uptimeMillis()
@@ -86,6 +87,20 @@ object InstrumentationTestHelper {
      */
     fun tap(v: View) {
         tap((v.left + v.right) / 2, (v.top + v.bottom) / 2)
+    }
+
+    /**
+     * Indicates whether the current device is an emulator.
+     *
+     * @return true if the current device is an emulator, false otherwise.
+     */
+    fun isEmulator(): Boolean {
+        return Build.FINGERPRINT.contains("generic") ||
+                Build.MODEL.contains("Emulator") ||
+                Build.MODEL.contains("Android SDK built for") ||
+                Build.MANUFACTURER.contains("Genymotion") ||
+                (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")) ||
+                "google_sdk" == Build.PRODUCT
     }
 
     /**

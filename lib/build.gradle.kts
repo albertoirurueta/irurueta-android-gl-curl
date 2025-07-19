@@ -1,5 +1,5 @@
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
-import com.vanniktech.maven.publish.SonatypeHost
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.library)
@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.publish)
 }
 
-val libraryVersion = "1.1.0"
+val libraryVersion = "1.1.1"
 
 android {
     namespace = "com.irurueta.android.gl.curl"
@@ -43,9 +43,6 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
     buildFeatures {
         buildConfig = true
     }
@@ -59,6 +56,11 @@ android {
             excludes.add("META-INF/LICENSE-notice.md")
             excludes.add("META-INF/LICENSE.md")
         }
+    }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget = JvmTarget.JVM_17
     }
 }
 
@@ -123,12 +125,7 @@ mavenPublishing {
         publishJavadocJar = true,
     ))
 
-    publishToMavenCentral(SonatypeHost.DEFAULT)
-    // or when publishing to https://s01.oss.sonatype.org
-    //publishToMavenCentral(SonatypeHost.S01)
-    // or when publishing to https://central.sonatype.com/
-    //publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
-
+    publishToMavenCentral()
     signAllPublications()
 
     coordinates("com.irurueta", "irurueta-android-gl-curl", libraryVersion)

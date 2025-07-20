@@ -15,14 +15,10 @@
  */
 package com.irurueta.android.gl.curl
 
-import android.os.Build
 import android.os.SystemClock
-import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import androidx.test.platform.app.InstrumentationRegistry
-import java.util.logging.Level
-import java.util.logging.Logger
 import kotlin.math.abs
 
 
@@ -90,30 +86,6 @@ object InstrumentationTestHelper {
      */
     fun tap(v: View) {
         tap((v.left + v.right) / 2, (v.top + v.bottom) / 2)
-    }
-
-    /**
-     * Indicates whether the current device is an emulator.
-     *
-     * @return true if the current device is an emulator, false otherwise.
-     */
-    fun isEmulator(): Boolean {
-        Logger.getGlobal().log(Level.INFO, "Fingerprint {}", Build.FINGERPRINT)
-        Logger.getGlobal().log(Level.INFO, "Model {}", Build.MODEL)
-        Logger.getGlobal().log(Level.INFO, "Manufacturer {}", Build.MANUFACTURER)
-        Logger.getGlobal().log(Level.INFO, "Brand {}", Build.BRAND)
-
-        Log.i("Fingerprint", Build.FINGERPRINT)
-        Log.i("Model", Build.MODEL)
-        Log.i("Manufacturer", Build.MANUFACTURER)
-        Log.i("Brand", Build.BRAND)
-
-        return Build.FINGERPRINT.contains("generic") ||
-                Build.MODEL.contains("Emulator") ||
-                Build.MODEL.contains("Android SDK built for") ||
-                Build.MANUFACTURER.contains("Genymotion") ||
-                (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")) ||
-                "google_sdk" == Build.PRODUCT
     }
 
     /**

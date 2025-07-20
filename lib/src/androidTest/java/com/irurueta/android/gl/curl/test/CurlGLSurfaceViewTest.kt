@@ -984,8 +984,9 @@ class CurlGLSurfaceViewTest {
         val b = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         b.eraseColor(Color.WHITE)
         val canvas = Canvas(b)
-        canvas.drawBitmap(bitmap, null, rect, null)
-
+        if (!bitmap.isRecycled) {
+            canvas.drawBitmap(bitmap, null, rect, null)
+        }
         return b
     }
 

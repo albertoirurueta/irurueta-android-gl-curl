@@ -962,6 +962,7 @@ class CurlTextureViewTest {
 
     private fun loadBitmap(width: Int, height: Int, index: Int): Bitmap? {
         val bitmap = bitmaps[index] ?: return null
+        if (bitmap.isRecycled) return null
 
         val bitmapWidth = bitmap.width
         val bitmapHeight = bitmap.height

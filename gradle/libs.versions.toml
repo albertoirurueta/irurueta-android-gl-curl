@@ -8,13 +8,14 @@ composeBom = "2025.07.00"
 material = "1.12.0"
 dokka = "2.0.0"
 sonarqube = "6.2.0.5505"
-mockk = "1.14.2"
+mockk = "1.14.5"
 testCoreKtx = "1.6.1"
 publish = "0.34.0"
 robolectric = "4.15.1"
 kotlinReflect = "2.1.21"
 khronos = "gl1.1-android-2.1_r1"
-glutils = "1.1.5"
+glutils = "1.1.6"
+iruruetaTestUtils = "1.2.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -30,6 +31,7 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlinReflect" }
 khronos = { group = "org.khronos", name = "opengl-api", version.ref = "khronos" }
 glutils = { group = "com.irurueta", name = "irurueta-android-glutils", version.ref = "glutils" }
+irurueta-test-utils = { group = "com.irurueta", name = "irurueta-android-test-utils", version.ref= "iruruetaTestUtils" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

@@ -24,11 +24,12 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.test.ext.junit.rules.activityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.filters.RequiresDevice
 import androidx.test.internal.runner.junit4.statement.UiThreadStatement
-import com.irurueta.android.gl.curl.InstrumentationTestHelper
 import com.irurueta.android.gl.curl.CurlGLSurfaceView
 import com.irurueta.android.gl.curl.CurlPage
+import com.irurueta.android.testutils.ConditionalIgnoreRule
+import com.irurueta.android.testutils.InstrumentationTestHelper
+import com.irurueta.android.testutils.RequiresRealDevice
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.runner.RunWith
@@ -36,12 +37,14 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
-@RequiresDevice
 @RunWith(AndroidJUnit4::class)
 class CurlGLSurfaceViewTest {
 
     @get:Rule
     val rule = activityScenarioRule<CurlGLSurfaceViewActivity>()
+
+    @get:Rule
+    val conditionalIgnoreRule = ConditionalIgnoreRule()
 
     private var activity: CurlGLSurfaceViewActivity? = null
     private var view: CurlGLSurfaceView? = null
@@ -141,6 +144,7 @@ class CurlGLSurfaceViewTest {
         reset()
     }
 
+    @RequiresRealDevice
     @Test
     fun constructor_whenNotAttached_setsDefaultValues() {
         val activity = this.activity ?: return fail()
@@ -171,6 +175,7 @@ class CurlGLSurfaceViewTest {
         }
     }
 
+    @RequiresRealDevice
     @Test
     fun constructor_whenAttached_setsDefaultValues() {
         val view = this.view ?: return fail()
@@ -194,6 +199,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(GLSurfaceView.RENDERMODE_WHEN_DIRTY, view.renderMode)
     }
 
+    @RequiresRealDevice
     @Test
     fun pageProvider_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -202,6 +208,7 @@ class CurlGLSurfaceViewTest {
         assertSame(pageProvider, view.pageProvider)
     }
 
+    @RequiresRealDevice
     @Test
     fun sizeChangeObserver_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -231,6 +238,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, sizeChanged)
     }
 
+    @RequiresRealDevice
     @Test
     fun currentIndexChangedListener_whenSinglePageModeNotAnimated_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -278,6 +286,7 @@ class CurlGLSurfaceViewTest {
         Thread.sleep(SLEEP)
     }
 
+    @RequiresRealDevice
     @Test
     fun currentIndexChangedListener_whenOnePageAnimated_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -320,6 +329,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(0, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun currentIndexChangedListener_whenTwoPageAnimated_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -368,6 +378,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(0, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun pageClickListener_whenPageClick_isNotified() {
         val view = this.view ?: return fail()
@@ -384,6 +395,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, pageClicked)
     }
 
+    @RequiresRealDevice
     @Test
     fun setMargins_drawsPagesWithTransparentBackground() {
         val view = this.view ?: return fail()
@@ -416,6 +428,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun setProportionalMargins_drawsPagesWithTransparentBackground() {
         val view = this.view ?: return fail()
@@ -445,6 +458,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun drag_whenLastPageCurlAllowed_changesPage() {
         val view = this.view ?: return fail()
@@ -529,6 +543,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(0, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun drag_whenLastPageCurlDisallowed_changesPage() {
         val view = this.view ?: return fail()
@@ -588,6 +603,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(2, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun maxCurlSplitsInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -618,6 +634,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun drawCurlPositionInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -663,6 +680,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun drawPolygonOutlinesInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -708,6 +726,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun drawShadowInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -753,6 +772,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun drawTextureInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -798,6 +818,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun shadowInnerColorInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -844,6 +865,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun shadowOuterColorInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()
@@ -890,6 +912,7 @@ class CurlGLSurfaceViewTest {
         assertEquals(1, view.currentIndex)
     }
 
+    @RequiresRealDevice
     @Test
     fun colorFactorOffsetInMesh_setsExpectedValue() {
         val view = this.view ?: return fail()

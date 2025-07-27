@@ -19,6 +19,7 @@ package com.irurueta.android.gl.curl
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.RectF
+import com.irurueta.android.testutils.getPrivateProperty
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith

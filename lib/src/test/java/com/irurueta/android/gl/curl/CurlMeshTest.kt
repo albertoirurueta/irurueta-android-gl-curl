@@ -19,6 +19,7 @@ package com.irurueta.android.gl.curl
 import android.graphics.Bitmap
 import android.graphics.PointF
 import android.graphics.RectF
+import com.irurueta.android.testutils.getPrivateProperty
 import io.mockk.impl.annotations.MockK
 import io.mockk.junit4.MockKRule
 import io.mockk.justRun

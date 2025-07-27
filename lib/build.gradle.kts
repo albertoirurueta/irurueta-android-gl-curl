@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.publish)
 }
 
-val libraryVersion = "1.1.1"
+val libraryVersion = "1.1.2"
 
 android {
     namespace = "com.irurueta.android.gl.curl"
@@ -108,11 +108,13 @@ dependencies {
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core.ktx)
     testImplementation(libs.kotlin.reflect)
+    testImplementation(libs.irurueta.test.utils)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.test.core.ktx)
     androidTestImplementation(libs.androidx.test.ext.junit.ktx)
     androidTestImplementation(libs.mockk.android)
+    androidTestImplementation(libs.irurueta.test.utils)
 }
 
 mavenPublishing {

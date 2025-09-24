@@ -38,7 +38,7 @@ Two views are available:
 Add the following dependency to your project:
 
 ```
-implementation 'com.irurueta:irurueta-android-gl-curl:1.1.3'
+implementation 'com.irurueta:irurueta-android-gl-curl:1.1.4'
 ```
 
 The view can be added to your layout as:

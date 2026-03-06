@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.publish)
 }
 
-val libraryVersion = "1.1.5"
+val libraryVersion = "1.1.6"
 
 android {
     namespace = "com.irurueta.android.gl.curl"

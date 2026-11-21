@@ -1,0 +1,53 @@
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.openapitools</groupId>
+      <artifactId>openapi-generator-maven-plugin</artifactId>
+      <executions>
+        <execution>
+          <id>generate-rest-server-v1</id>
+          <phase>generate-sources</phase>
+          <goals>
+            <goal>generate</goal>
+          </goals>
+          <configuration>
+            <inputSpec>${maven.multiModuleProjectDirectory}/apis/rest-server/<service>-api-v1.yaml</inputSpec>
+            <generatorName>spring</generatorName>
+            <apiPackage><base>.api.rest.v1.generated.api</apiPackage>
+            <modelPackage><base>.api.rest.v1.generated.model</modelPackage>
+            <configOptions>
+              <!-- interfaceOnly: generate the interfaces only; the controllers are hand-written and
+                   implement them, so regeneration can never overwrite real logic. -->
+              <interfaceOnly>true</interfaceOnly>
+              <useSpringBoot3>true</useSpringBoot3>
+              <useTags>true</useTags>
+              <useJakartaEe>true</useJakartaEe>
+              <useBeanValidation>true</useBeanValidation>
+              <performBeanValidation>true</performBeanValidation>
+              <openApiNullable>false</openApiNullable>
+              <documentationProvider>none</documentationProvider>
+              <!-- reactive: true emits Mono/Flux signatures. Set from stack.concurrency. -->
+              <reactive><true-if-reactive></reactive>
+              <serializableModel>true</serializableModel>
+              <unhandledException>true</unhandledException>
+            </configOptions>
+          </configuration>
+        </execution>
+        <execution>
+          <id>generate-rest-server-docs</id>
+          <phase>generate-resources</phase>
+          <goals>
+            <goal>generate</goal>
+          </goals>
+          <configuration>
+            <inputSpec>${maven.multiModuleProjectDirectory}/apis/rest-server/<service>-api-v1.yaml</inputSpec>
+            <generatorName>html2</generatorName>
+            <output>${project.build.directory}/generated-docs/rest-server/v1</output>
+            <generateApiTests>false</generateApiTests>
+            <generateModelTests>false</generateModelTests>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>
+  </plugins>
+</build>

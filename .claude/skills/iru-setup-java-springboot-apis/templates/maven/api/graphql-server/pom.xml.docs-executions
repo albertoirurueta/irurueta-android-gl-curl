@@ -1,0 +1,16 @@
+<execution>
+  <id>graphql-docs-spectaql</id>
+  <phase>generate-resources</phase>
+  <goals><goal>npx</goal></goals>
+  <configuration>
+    <arguments>spectaql spectaql-v1.yml --target-dir ${project.build.directory}/generated-docs/graphql-server/v1</arguments>
+  </configuration>
+</execution>
+<execution>
+  <id>graphql-docs-voyager</id>
+  <phase>generate-resources</phase>
+  <goals><goal>npx</goal></goals>
+  <configuration>
+    <arguments>node build-voyager.mjs ${maven.multiModuleProjectDirectory}/apis/graphql-server/<service>-v1.graphqls ${project.build.directory}/generated-docs/graphql-server/v1/voyager <Service> GraphQL schema</arguments>
+  </configuration>
+</execution>

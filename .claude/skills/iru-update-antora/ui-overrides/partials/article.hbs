@@ -1,0 +1,9 @@
+{{!-- Override of the bundle's article partial: data-pagefind-body limits the search index to the article, so the nav, header and footer are not indexed, and it is set only on the latest version of a component, so a page published in several versions is found once; the hidden span exposes the component title as a "component" filter. --}}
+<article class="doc"{{#if (eq page.version page.component.latest.version)}} data-pagefind-body{{/if}}>
+<span data-pagefind-filter="component[data-component]" data-component="{{page.component.title}}" hidden></span>
+{{#with page.title}}
+<h1 class="page">{{{this}}}</h1>
+{{/with}}
+{{{page.contents}}}
+{{> pagination}}
+</article>

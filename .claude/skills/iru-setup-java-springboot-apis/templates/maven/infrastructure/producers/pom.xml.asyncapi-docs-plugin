@@ -1,0 +1,68 @@
+<plugin>
+  <groupId>com.github.eirslett</groupId>
+  <artifactId>frontend-maven-plugin</artifactId>
+  <configuration>
+    <!-- package.json lives with the contract it documents, not in the module. -->
+    <workingDirectory>${maven.multiModuleProjectDirectory}/apis/messaging/docs</workingDirectory>
+    <!-- Node itself is a build artifact: keep it under target/, out of the source tree. -->
+    <installDirectory>${project.build.directory}</installDirectory>
+    <skip>${asyncapi.docs.skip}</skip>
+    <environmentVariables>
+      <!-- The CLI otherwise writes ~/.asyncapi-analytics and reports usage to New Relic on
+           every build. Pointing at a committed file with analyticsEnabled=false makes the
+           build silent and offline. (CI=true also suppresses it, but local builds aren't CI.) -->
+      <ASYNCAPI_METRICS_CONFIG_PATH>${maven.multiModuleProjectDirectory}/apis/messaging/docs/.asyncapi-analytics</ASYNCAPI_METRICS_CONFIG_PATH>
+    </environmentVariables>
+  </configuration>
+  <executions>
+    <execution>
+      <id>asyncapi-install-node</id>
+      <phase>generate-resources</phase>
+      <goals>
+        <goal>install-node-and-npm</goal>
+      </goals>
+      <configuration>
+        <nodeVersion>v<node-major>.<x>.<y></nodeVersion>
+      </configuration>
+    </execution>
+    <execution>
+      <id>asyncapi-install-toolchain</id>
+      <phase>generate-resources</phase>
+      <goals>
+        <goal>npm</goal>
+      </goals>
+      <configuration>
+        <!-- `ci`, not `install`: the committed lock file is the contract. -->
+        <arguments>ci --no-audit --no-fund</arguments>
+      </configuration>
+    </execution>
+    <execution>
+      <id>asyncapi-validate</id>
+      <phase>generate-resources</phase>
+      <goals>
+        <goal>npx</goal>
+      </goals>
+      <configuration>
+        <!-- Ahead of generation, so a malformed contract fails with a validation error
+             instead of an obscure generator crash. This resolves and type-checks the
+             referenced .avsc files too, so a missing or invalid AVRO schema fails here
+             (exit 1) rather than producing a page with empty payload tables. A merely
+             out-of-date `asyncapi:` version is reported as information and exits 0, so a
+             new specification release can never break the build on its own. -->
+        <arguments>asyncapi validate ${maven.multiModuleProjectDirectory}/apis/messaging/<service>-async-api-v1.yaml</arguments>
+      </configuration>
+    </execution>
+    <execution>
+      <id>asyncapi-docs-html</id>
+      <phase>generate-resources</phase>
+      <goals>
+        <goal>npx</goal>
+      </goals>
+      <configuration>
+        <!-- singleFile=true emits one self-contained index.html, so publishing is a single
+             file copy and the page works from any path on GitHub Pages. -->
+        <arguments>asyncapi generate fromTemplate ${maven.multiModuleProjectDirectory}/apis/messaging/<service>-async-api-v1.yaml @asyncapi/html-template -o ${project.build.directory}/generated-docs/messaging/v1 --force-write -p singleFile=true</arguments>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>

@@ -1,0 +1,18 @@
+[versions]
+agp = "<agp-version>"
+kotlin = "<kotlin-version>"
+junit = "<junit-version>"
+junitVersion = "<androidx-junit-version>"
+espressoCore = "<espresso-version>"
+material = "<material-version>"
+dokka = "<dokka-version>"
+sonarqube = "<sonarqube-plugin-version>"
+mockk = "<mockk-version>"
+testCoreKtx = "<test-core-ktx-version>"
+robolectric = "<robolectric-version>"
+kotlinReflect = "<kotlin-version>"
+iruruetaTestUtils = "<irurueta-test-utils-version>"
+roborazzi = "<roborazzi-version>"
+# Only when `ui: compose` (Step 2):
+composeBom = "<compose-bom-version>"
+activityCompose = "<activity-compose-version>"

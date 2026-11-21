@@ -1,0 +1,21 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId><group-id></groupId>
+    <artifactId><parent-artifact-id></artifactId>
+    <version><version></version>
+    <relativePath><relative-path-to-parent-pom></relativePath>
+  </parent>
+
+  <artifactId><artifact-id>-<module-suffix></artifactId>
+  <packaging>jar</packaging>
+  <name>${project.groupId}:${project.artifactId}</name>
+  <description><what this module is responsible for></description>
+
+  <dependencies>
+    <!-- Only what this module needs, per Step 2's table. No <version> anywhere. -->
+  </dependencies>
+</project>

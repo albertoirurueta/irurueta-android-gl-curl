@@ -1,0 +1,121 @@
+= Usage
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+This page shows how to add `CurlTextureView` (package `com.irurueta.android.gl.curl`) to a screen, provide its pages
+and handle the activity lifecycle. Every property is listed with its default value in the
+xref:configuration.adoc[Configuration reference].
+
+== Adding the view to a layout
+
+`CurlTextureView` is a regular view, so it can be declared in XML next to any other view. Its background is
+transparent, so views declared before it remain visible around and behind the pages:
+
+[source,xml]
+----
+include::example$layout.xml[]
+----
+
+== Creating the view in code
+
+`CurlTextureView` has a `@JvmOverloads` constructor `(context, attrs = null, defStyleAttr = 0)`:
+
+[source,kotlin]
+----
+include::example$programmatic.kt[]
+----
+
+== Providing pages
+
+Nothing is drawn until a `PageProvider` is set. The provider tells the view how many pages there are and fills a
+`CurlPage` with the bitmap of each page when the view needs it:
+
+[source,kotlin]
+----
+include::example$pageProvider.kt[]
+----
+
+`width` and `height` are the size in pixels of a page on screen (the view size minus its margins, or half of it in
+two page mode). Returning bitmaps of that size keeps the aspect ratio of the page, although bitmaps of any size are
+accepted. A helper that scales a source image to fit the page could look like this:
+
+[source,kotlin]
+----
+include::example$renderPage.kt[]
+----
+
+Setting `pageProvider` resets the current page to `0` and requests the pages again. See
+xref:pages.adoc[Pages and textures] for back sides, blend colors and memory considerations.
+
+== Handling the lifecycle
+
+As with any `GLTextureView` (or `GLSurfaceView`), forward the activity or fragment lifecycle to the view, so that its
+OpenGL rendering thread is paused and resumed:
+
+[source,kotlin]
+----
+include::example$lifecycle.kt[]
+----
+
+== A complete activity
+
+[source,kotlin]
+----
+include::example$activity.kt[]
+----
+
+[#size]
+== Reacting to size changes
+
+Margins depend on the view size, which is only known once the view has been laid out. Set a `SizeChangedObserver` to
+adjust them, and set the page provider from there, so that the first pages are requested with their final size. This
+is what the xref:sample-app.adoc[sample app] does to leave room for a title above the pages:
+
+[source,kotlin]
+----
+include::example$sizeChanged.kt[]
+----
+
+[#choosing]
+== Choosing a view
+
+Both views expose the same properties, methods and listeners. The only difference is the class they extend:
+
+* `CurlTextureView` extends `GLTextureView`, a `TextureView`. It is drawn as part of the view hierarchy, so it supports
+  a transparent background, `alpha`, view animations and transformations, and it can be placed between other views:
++
+[source,kotlin]
+----
+include::example$composition.kt[]
+----
+* `CurlGLSurfaceView` extends `GLSurfaceView`. Its surface is composited separately from the window, which is slightly
+  faster, but it cannot be animated, transformed or blended with other views like a regular view.
+
+The listener and provider interfaces are nested in each class (`CurlGLSurfaceView.PageProvider`,
+`CurlGLSurfaceView.PageClickListener`...), and their callbacks receive the corresponding view type:
+
+[source,kotlin]
+----
+include::example$glSurfaceView.kt[]
+----
+
+== Using the view from Jetpack Compose
+
+`CurlTextureView` is a classic view, so it can be embedded in a composable with `AndroidView`. Composables drawn
+before it remain visible through its transparent background:
+
+[source,kotlin]
+----
+include::example$compose.kt[]
+----
+
+== Touch handling and rendering model
+
+The view handles touch events itself: dragging from the right page curls it towards the left (next page), and dragging
+from the left page curls it back (previous page). When the finger is raised, the flip is completed or reverted with a
+short animation. A tap is reported to the xref:navigation.adoc#listeners[`PageClickListener`].
+
+The view renders only on demand (`RENDER_MODE_WHEN_DIRTY`): setters such as `pageProvider`, `setCurrentIndex` or
+`setBackgroundColor` request a new frame, and frames are rendered continuously only while a page is moving.
+
+Next: xref:pages.adoc[Pages and textures].

@@ -1,0 +1,27 @@
+= User interface
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+The library provides two reusable views with the same page curl behavior, `CurlTextureView` and `CurlGLSurfaceView`.
+The sample app's single screen hosts a `CurlTextureView`.
+
+image::video.gif[Sample app main screen,width=304]
+
+== Screens
+
+[cols="1,3,2",options="header"]
+|===
+|Name |Purpose |Entry point
+|MainActivity |Sample app screen showing three images as book pages over a title. |Launcher activity (`app` module)
+|===
+
+== Components
+
+[cols="1,3,2",options="header"]
+|===
+|Name |Purpose |Used by
+|xref:usage.adoc[CurlTextureView] |Shows a paper curl like pagination using a `TextureView` and OpenGL ES. |MainActivity
+|xref:usage.adoc#choosing[CurlGLSurfaceView] |Shows a paper curl like pagination using an OpenGL ES surface view. |Library users
+|===
+
+See xref:ui/navigation.adoc[] for the navigation flows.

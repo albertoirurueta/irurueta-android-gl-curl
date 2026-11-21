@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: composer
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      composer-dependencies:
+        patterns: [ "*" ]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions-dependencies:
+        patterns: [ "*" ]
+
+  # Only when a root package.json exists (Laravel Vite, @wordpress/scripts, @wordpress/env).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      npm-dependencies:
+        patterns: [ "*" ]
+
+  # laravel + distribution: internal only — the Dockerfile's base images.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Only when docs/package-lock.json exists — the Antora toolchain.
+  - package-ecosystem: npm
+    directory: /docs
+    schedule:
+      interval: weekly
+    groups:
+      docs-dependencies:
+        patterns: [ "*" ]

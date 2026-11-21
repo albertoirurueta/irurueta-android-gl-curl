@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  eas-build-and-submit:
+    name: EAS build and submit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+
+      - name: Install dependencies
+        run: <install-command>
+
+      - name: Set up EAS
+        uses: expo/expo-github-action@v9
+        with:
+          token: ${{ secrets.EXPO_TOKEN }}
+          eas-version: latest
+
+      - name: EAS build (all platforms)
+        run: eas build --platform all --non-interactive --profile production
+
+      # Omit this whole step if distribution: internal (Step 1) — EAS submit always targets the store tracks
+      - name: EAS submit (all platforms)
+        run: eas submit --platform all --non-interactive --profile production

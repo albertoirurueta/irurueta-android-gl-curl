@@ -1,0 +1,11 @@
+{
+  "name": "<service>-graphql-docs",
+  "private": true,
+  "version": "1.0.0",
+  "description": "GraphQL documentation toolchain. Not published; not a Maven module.",
+  "dependencies": {
+    "spectaql": "<latest 3.x>",
+    "graphql": "<latest 16.x>",
+    "graphql-voyager": "<latest 2.x>"
+  }
+}

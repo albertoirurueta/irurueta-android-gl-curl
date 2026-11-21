@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.publish)
 }
 
-val libraryVersion = "1.1.6"
+val libraryVersion = "1.1.7-SNAPSHOT"
 
 android {
     namespace = "com.irurueta.android.gl.curl"
@@ -51,6 +51,10 @@ android {
             isIncludeAndroidResources = true
         }
     }
+    lint {
+        // SARIF report is uploaded to GitHub code scanning by the CI workflows
+        sarifReport = true
+    }
     packaging {
         resources {
             excludes.add("META-INF/LICENSE-notice.md")
@@ -72,13 +76,16 @@ sonar {
         property("sonar.organization", "albertoirurueta-github")
         property("sonar.host.url", "https://sonarcloud.io")
 
-        property("sonar.tests", listOf("src/test/java", "src/androidTest/java"))
+        // Absolute paths: the SonarQube plugin (7.3+, AGP 9 support) merges the Android source/test dirs it computes
+        // (absolute) into these, and only deduplicates them against absolute paths. A relative path here would
+        // index the same files twice and fail the analysis ("can't be indexed twice").
+        property("sonar.tests", listOf(file("src/test/java").path, file("src/androidTest/java").path))
         property("sonar.test.inclusions",
             listOf("**/*Test*/**", "src/androidTest/**", "src/test/**"))
         property("sonar.test.exclusions",
             listOf("**/*Test*/**", "src/androidTest/**", "src/test/**"))
         property("sonar.sourceEncoding", "UTF-8")
-        property("sonar.sources", "src/main/java")
+        property("sonar.sources", file("src/main/java").path)
         property("sonar.exclusions", "**/*Test*/**,*.json,'**/*test*/**,**/.gradle/**,**/R.class")
 
         val libraries = project.android.sdkDirectory.path + "/platforms/android-36/android.jar"
@@ -90,7 +97,7 @@ sonar {
 
         property("sonar.coverage.jacoco.xmlReportPaths",
             listOf("build/reports/coverage/androidTest/debug/connected/report.xml",
-                "build/reports/coverage/test/report.xml"))
+                "build/reports/coverage/test/debug/report.xml"))
         property("sonar.java.coveragePlugin", "jacoco")
         property("sonar.junit.reportsPath",
             listOf("build/test-results/testDebugUnitTest",
@@ -156,6 +163,17 @@ mavenPublishing {
             url.set("https://github.com/albertoirurueta/irurueta-android-gl-curl/")
             connection.set("scm:git:github.com/albertoirurueta/irurueta-android-gl-curl.git")
             developerConnection.set("scm:git:ssh://github.com/albertoirurueta/irurueta-android-gl-curl.git")
+        }
+    }
+}
+
+dokka {
+    dokkaSourceSets.configureEach {
+        // Dokka 2.3 sees AGP's "release" variant as a second source set over the same files as "androidJvm",
+        // which fails its pre-generation check (https://github.com/Kotlin/dokka/issues/3701). Document the
+        // sources once, through "androidJvm".
+        if (name == "release") {
+            suppress.set(true)
         }
     }
 }

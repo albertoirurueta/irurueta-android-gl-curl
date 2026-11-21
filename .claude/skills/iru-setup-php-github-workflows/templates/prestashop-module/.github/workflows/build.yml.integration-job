@@ -1,0 +1,59 @@
+  integration:
+    name: Integration tests (PrestaShop ${{ matrix.ps }})
+    needs: tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ps: [ <ps-versions> ]
+    env:
+      PS_VERSION: ${{ matrix.ps }}
+      # shop:up waits for the auto-install; Composer would otherwise kill a script after 300 s.
+      COMPOSER_PROCESS_TIMEOUT: 0
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up PHP <php-floor>
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-floor>'
+          coverage: none
+          tools: composer:v2
+      # vendor/ (with PHPUnit and PHPStan) is mounted into the shop together with the module.
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Start the shop
+        run: composer shop:up
+      - name: Install the module
+        run: composer shop:install
+      - name: Integration tests
+        run: composer test:integration
+      - name: Static analysis against the shop
+        run: composer lint:shop
+      # Browser UI tests (Playwright + axe-core, `.ui-quality.yml` level) against the running shop — only when the
+      # scaffold wrote playwright.config.ts.
+      - name: Set up Node for the browser UI tests
+        if: ${{ hashFiles('playwright.config.*') != '' }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Browser UI tests
+        if: ${{ hashFiles('playwright.config.*') != '' }}
+        env:
+          PS_BASE_URL: http://localhost:8080
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots-integration-ps-${{ matrix.ps }}
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Stop the shop
+        if: ${{ always() }}
+        run: composer shop:down

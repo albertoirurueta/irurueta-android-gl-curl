@@ -1,0 +1,106 @@
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <mainClass><base-package>.<ServiceName>Application</mainClass>
+          <image>
+            <name><image-registry>/<artifact-id>:${project.version}</name>
+          </image>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>repackage</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Writes build-info.properties into this module's resources, the same house pattern as
+           iru-setup-java-library, so the running service can report exactly what was deployed. -->
+      <plugin>
+        <groupId>org.codehaus.gmaven</groupId>
+        <artifactId>groovy-maven-plugin</artifactId>
+        <version>${groovy-maven-plugin.version}</version>
+        <executions>
+          <execution>
+            <phase>validate</phase>
+            <goals>
+              <goal>execute</goal>
+            </goals>
+            <configuration>
+              <source>
+                <![CDATA[
+                import java.util.Date
+                import java.util.Properties
+                import java.text.SimpleDateFormat
+                import java.io.File
+                import java.io.FileWriter
+
+                println("Saving build info...")
+                def dateFormatter = new SimpleDateFormat("yy-MM-dd HH:mm:ss")
+                def buildTimestamp = dateFormatter.format(new Date())
+
+                String groupId = "${project.groupId}"
+                String artifactId = "${project.artifactId}"
+                String version = "${project.version}"
+
+                //GITHUB ACTIONS
+                def buildNumber = System.getenv("GITHUB_RUN_NUMBER")
+                def commit = System.getenv("GITHUB_SHA")
+                def branch = System.getenv("GITHUB_REF_NAME")
+
+                //JENKINS
+                if (buildNumber == null) {
+                  buildNumber = System.getenv("BUILD_NUMBER")
+                }
+                if (commit == null) {
+                  commit = System.getenv("GIT_COMMIT")
+                }
+                if (branch == null) {
+                  branch = System.getenv("GIT_BRANCH")
+                }
+
+                //GITLAB
+                if (buildNumber == null) {
+                  buildNumber = System.getenv("CI_JOB_ID")
+                }
+                if (commit == null) {
+                  commit = System.getenv("CI_COMMIT_SHA")
+                }
+                if (branch == null) {
+                  branch = System.getenv("CI_COMMIT_REF_NAME")
+                }
+
+                def props = new Properties()
+                props.setProperty("BUILD_TIMESTAMP", buildTimestamp)
+                props.setProperty("GROUP_ID", groupId)
+                props.setProperty("ARTIFACT_ID", artifactId)
+                props.setProperty("VERSION", version)
+                if (buildNumber != null) {
+                  props.setProperty("BUILD_NUMBER", buildNumber)
+                }
+                if (commit != null) {
+                  props.setProperty("COMMIT", commit)
+                }
+                if (branch != null) {
+                  props.setProperty("BRANCH", branch)
+                }
+
+                File dir = new File("${project.basedir}/src/main/resources/<base-package-path>")
+                dir.mkdirs()
+                File file = new File(dir, "build-info.properties")
+                FileWriter writer = new FileWriter(file)
+                props.store(writer, null)
+                writer.close()
+                println("Build info saved at " + file)
+                ]]>
+              </source>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>

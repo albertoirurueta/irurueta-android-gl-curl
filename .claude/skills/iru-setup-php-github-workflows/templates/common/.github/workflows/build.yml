@@ -1,0 +1,245 @@
+name: Build
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ]
+  pull_request:
+    branches: [ <integration-branch>, <stable-branch> ]
+  workflow_dispatch:
+
+# A newer push to the same branch/PR makes the running build obsolete.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Validate, audit, analyse and check style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up PHP <php-floor>
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-floor>'
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json and composer.lock
+        run: composer validate --strict
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-<php-floor>-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-<php-floor>-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      # Fails on any known advisory for a locked package (dev packages included — they run in CI too).
+      - name: Audit dependencies
+        run: composer audit --locked
+
+      - name: Static analysis
+        run: composer lint
+
+      - name: Coding style
+        run: composer format:check
+
+      # sonar — PHPStan's JSON for Sonar's external-issue import (the gate itself is "Static analysis").
+      - name: PHPStan report for Sonar
+        run: composer lint:report || true
+      - name: Upload the PHPStan report
+        uses: actions/upload-artifact@v7
+        with:
+          name: phpstan-report
+          path: build/logs/phpstan.json
+          retention-days: 7
+
+  tests:
+    name: Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ <php-matrix> ]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up PHP ${{ matrix.php }} with PCOV
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: pcov
+          tools: composer:v2
+
+      - name: Locate the Composer cache
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer downloads
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: composer-${{ runner.os }}-${{ matrix.php }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-${{ matrix.php }}-
+
+      # The lock is resolved for the floor (config.platform.php), so the same versions install on every PHP here.
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      # laravel — the fast suites need an application key (phpunit.xml provides SQLite :memory:).
+      - name: Prepare the Laravel environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      # Fast suites only (no Docker, no database server); writes build/logs/clover.xml and junit.xml and enforces
+      # the scaffold's 80% line-coverage floor.
+      - name: Fast tests with coverage
+        run: composer test:coverage
+
+      - name: Upload test and coverage reports
+        if: ${{ always() && matrix.php == '<php-floor>' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: build/logs/
+          retention-days: 7
+
+  # sonar: cloud | self-hosted only — drop the whole job for sonar: none. Fork pull requests get no secrets.
+  sonar:
+    name: SonarCloud analysis
+    needs: [ quality, tests ]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          # Sonar attributes issues and new code using full history.
+          fetch-depth: 0
+      - name: Download test and coverage reports
+        uses: actions/download-artifact@v8
+        with:
+          name: test-reports
+          path: build/logs
+      - name: Download the PHPStan report
+        uses: actions/download-artifact@v8
+        with:
+          name: phpstan-report
+          path: build/logs
+      # Reads sonar-project.properties (sources, tests, clover.xml, junit.xml, phpstan.json paths).
+      - name: Run SonarCloud analysis
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # SONAR_HOST_URL: <sonar-host-url>    # sonar: self-hosted only
+
+  # docs — built on every push (a broken page fails the branch), published from <stable-branch> only.
+  docs:
+    name: Build documentation
+    needs: [ quality, tests ]
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      # phpdoc — only when phpdoc.dist.xml exists: API reference merged under api/.
+      - name: Set up PHP with phpDocumentor
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-latest>'
+          coverage: none
+          tools: phpDocumentor
+      - name: Build API documentation
+        run: phpdoc run --config phpdoc.dist.xml --target build/api --cache-folder "$RUNNER_TEMP/phpdoc-cache"
+
+      - name: Set up Node for the Antora toolchain
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge documentation
+        run: |
+          touch docs/build/site/.nojekyll
+          mkdir -p docs/build/site/api && cp -r build/api/. docs/build/site/api/    # phpdoc only
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into the site directory.
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk docs/build/site | cut -f1)
+      #     echo "site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      # pages: yes
+      - name: Upload Pages artifact
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/<stable-branch>' }}
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/build/site
+
+      # pages: no — instead of "Upload Pages artifact" (and drop the deploy-docs job)
+      - name: Upload documentation
+        uses: actions/upload-artifact@v7
+        with:
+          name: documentation
+          path: docs/build/site
+          retention-days: 14
+
+  # pages: yes only — Settings → Pages → Source must be "GitHub Actions".
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: docs
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/<stable-branch>' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

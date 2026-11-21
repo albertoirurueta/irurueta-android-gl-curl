@@ -1,0 +1,95 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [ dev, prod ]        # from the infra/envs/* directories found in Step 0
+      image_tag:
+        description: Image tag to deploy (defaults to the commit SHA)
+        required: false
+        type: string
+
+concurrency:
+  # Never let two deploys to the same environment interleave.
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write        # required for OIDC; this is the whole reason no access key is needed
+  packages: write
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    # The GitHub Environment is where the approval gate and the environment-scoped secrets live.
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven
+
+      - name: Resolve image tag
+        id: meta
+        run: echo "tag=${{ inputs.image_tag || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      # --- Cloud authentication: keyless, via OIDC. No stored access key. ---
+      # AWS variant:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      # Google Cloud variant (use instead of the above):
+      # - uses: google-github-actions/auth@v3
+      #   with:
+      #     workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      #     service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Build and push the container image
+        # spring-boot:build-image uses Cloud Native Buildpacks — no Dockerfile to maintain, and the
+        # resulting image is layered so unchanged dependencies aren't re-pushed.
+        run: |
+          mvn -B -ntp -pl boot -am spring-boot:build-image -DskipTests \
+            -Dspring-boot.build-image.imageName=${{ vars.IMAGE_REPOSITORY }}:${{ steps.meta.outputs.tag }} \
+            -Dspring-boot.build-image.publish=true \
+            -Ddocker.publishRegistry.username=${{ secrets.REGISTRY_USERNAME }} \
+            -Ddocker.publishRegistry.password=${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Tofu init
+        working-directory: infra/envs/${{ inputs.environment }}
+        run: tofu init
+
+      - name: Tofu plan
+        working-directory: infra/envs/${{ inputs.environment }}
+        run: tofu plan -input=false -var="image_tag=${{ steps.meta.outputs.tag }}" -out=tfplan
+
+      - name: Tofu apply
+        working-directory: infra/envs/${{ inputs.environment }}
+        run: tofu apply -input=false -auto-approve tfplan
+
+      - name: Smoke check
+        # Fail the deploy if the service never becomes healthy, rather than reporting success
+        # because `apply` returned 0.
+        run: |
+          url="$(cd infra/envs/${{ inputs.environment }} && tofu output -raw service_health_url)"
+          for _ in $(seq 1 30); do
+            if curl -fsS "$url" >/dev/null; then echo "Healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::Service did not become healthy within 5 minutes"
+          exit 1

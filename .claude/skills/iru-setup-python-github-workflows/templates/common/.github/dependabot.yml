@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # uv when uv.lock exists; pip for requirements*.txt / Poetry projects.
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-dependencies:
+        patterns: [ "*" ]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions-dependencies:
+        patterns: [ "*" ]
+
+  # Only when a root Dockerfile exists — the python:3.x-slim base and the ghcr.io/astral-sh/uv image.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Only when compose.yaml / docker-compose.yml exists — the postgres image of the local stack.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Only when docs/package-lock.json exists — the Antora toolchain.
+  - package-ecosystem: npm
+    directory: /docs
+    schedule:
+      interval: weekly
+    groups:
+      docs-dependencies:
+        patterns: [ "*" ]

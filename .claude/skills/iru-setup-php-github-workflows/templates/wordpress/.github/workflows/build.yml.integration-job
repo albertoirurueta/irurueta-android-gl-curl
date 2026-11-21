@@ -1,0 +1,69 @@
+  integration:
+    name: Integration tests (WordPress ${{ matrix.wp }}, PHP ${{ matrix.php }})
+    needs: tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - wp: '<wp-floor>'
+            core: 'WordPress/WordPress#<wp-floor>'
+            php: '<php-floor>'
+          - wp: latest
+            core: ''
+            php: '<php-latest>'
+    defaults:
+      run:
+        working-directory: <slug>
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          path: <slug>
+      - name: Set up PHP <php-floor>
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-floor>'
+          coverage: none
+          tools: composer:v2
+      # vendor/ is installed on the runner and mounted into the wp-env containers with the plugin/theme.
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: <slug>/package-lock.json
+      - name: Install wp-env
+        run: npm ci
+      # WP_ENV_CORE / WP_ENV_PHP_VERSION override .wp-env.test.json's core/phpVersion for this matrix entry
+      # (an empty core keeps "latest").
+      - name: Start the WordPress test environment
+        env:
+          CORE: ${{ matrix.core }}
+          WP_ENV_PHP_VERSION: ${{ matrix.php }}
+        run: |
+          if [ -n "$CORE" ]; then export WP_ENV_CORE="$CORE"; fi
+          npm run test:env:start
+      - name: Integration tests
+        run: composer test:integration
+      # Browser UI tests (`wp-scripts test-playwright`, `.ui-quality.yml` level) against the test environment the
+      # step above started (`.wp-env.test.json`, http://localhost:8889 — the instance the scaffold's
+      # playwright.config.ts targets through WP_BASE_URL) — only when the scaffold wrote playwright.config.ts, and
+      # only on the latest-WordPress entry. Chromium is installed explicitly, so wp-scripts must not download again.
+      - name: Browser UI tests
+        if: ${{ matrix.wp == 'latest' && hashFiles('<slug>/playwright.config.*') != '' }}
+        env:
+          WP_BASE_URL: http://localhost:8889
+        run: |
+          npx playwright install --with-deps chromium
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm run test:e2e
+      - name: Upload UI screenshots
+        if: ${{ always() && matrix.wp == 'latest' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots-integration-wp-${{ matrix.wp }}
+          path: <slug>/.ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+
+permissions:
+  checks: write
+  pull-requests: write
+  contents: write
+  security-events: write   # required by github/codeql-action/upload-sarif (the Lint SARIF upload steps below)
+
+jobs:
+  build:
+    name: Build and execute tests
+    runs-on: ubuntu-latest
+    steps:
+      # ... identical to every step under develop.yml's `build` job above, verbatim ...
+
+      # flavor: library, publish: yes — a full release build + publish, appended after every step above
+      # (replaces develop.yml's plain snapshot-publish step with the real release path).
+      - name: Release build
+        run: ./gradlew :<lib-module>:assembleRelease
+
+      - name: Publish to Maven Central
+        run: ./gradlew <lib-module>:publishAndReleaseToMavenCentral --no-configuration-cache
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_MEMORY_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+
+      # flavor: app, distribution != none — signs and bundles the release build, then uploads per
+      # `distribution`. iru-setup-android-app's app/build.gradle.kts reads these four EXACT env var names
+      # (SIGNING_STORE_FILE / SIGNING_STORE_PASSWORD / SIGNING_KEY_ALIAS / SIGNING_KEY_PASSWORD) via
+      # System.getenv() — map the ANDROID_KEYSTORE_*/ANDROID_KEY_* secrets onto them here.
+      - name: Decode Android keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > <app-module>/release.jks
+
+      - name: Build signed release bundle
+        run: ./gradlew :<app-module>:bundleRelease
+        env:
+          SIGNING_STORE_FILE: release.jks
+          SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      # distribution: store, and no com.github.triplet.play plugin found in Step 1's survey — the
+      # workflow-level upload action. If that plugin WAS found instead, replace this step with
+      # `run: ./gradlew :<app-module>:publishBundle` (with the same PLAY_SERVICE_ACCOUNT_JSON-derived
+      # credentials the plugin's own `play { serviceAccountCredentials.set(...) }` block expects) and drop
+      # this action entirely.
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: <application-id>
+          releaseFiles: <app-module>/build/outputs/bundle/release/<app-module>-release.aab
+          track: production
+
+      # distribution: internal
+      - name: Distribute via Firebase App Distribution
+        uses: wzieba/Firebase-Distribution-Github-Action@v1
+        with:
+          appId: ${{ secrets.FIREBASE_APP_ID }}
+          serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_CREDENTIALS }}
+          groups: internal-testers
+          file: <app-module>/build/outputs/bundle/release/<app-module>-release.aab
+
+  # Same deploy-docs job as develop.yml (flavor: library, pages: yes only) — omitted here for brevity, copy
+  # verbatim.

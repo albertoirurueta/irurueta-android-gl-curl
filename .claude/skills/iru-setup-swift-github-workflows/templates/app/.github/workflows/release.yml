@@ -1,0 +1,372 @@
+name: Release
+
+on:
+  release:
+    types: [released]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build (e.g. v1.2.0) — a manual run has no release event to read it from"
+        required: true
+        type: string
+      # >>> platform: macOS
+      attach:
+        description: "Also attach the notarized macOS zip to that tag's GitHub Release (a published release always does)"
+        required: false
+        type: boolean
+        default: false
+      # <<< platform: macOS
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  # The tag must equal project.yml's MARKETING_VERSION and be a plain x.y.z — App Store Connect and notarization take
+  # no suffix — so cut the release with iru-release / iru-swift-bump-version first.
+  version:
+    name: Check the release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Read and check the release version
+        id: version
+        run: |
+          set -euo pipefail
+          # >>> generator: xcodegen
+          manifest=project.yml
+          version="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([^"[:space:]]+)"?.*$/\1/p' "$manifest" | head -n 1)"
+          # <<< generator: xcodegen
+          # >>> generator: tuist
+          manifest=Project.swift
+          version="$(sed -nE 's/^[[:space:]]*"MARKETING_VERSION":[[:space:]]*"([^"]+)".*$/\1/p' "$manifest" | head -n 1)"
+          # <<< generator: tuist
+          tag_version="${RELEASE_TAG#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$manifest MARKETING_VERSION '$version' is not a release version x.y.z."
+            exit 1
+          fi
+          if [[ "$version" != "$tag_version" ]]; then
+            echo "::error::$manifest MARKETING_VERSION '$version' does not match the tag '$RELEASE_TAG'."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  # Archive with automatic signing + the API key, then export with destination=upload: one xcodebuild step signs for
+  # App Store Connect and uploads (TestFlight). distribution: store — submitting for App Review stays a manual step in
+  # App Store Connect. App Store Connect rejects a reused CURRENT_PROJECT_VERSION: a re-run after a successful upload
+  # needs a bump (iru-swift-bump-version).
+  # >>> app-store-job
+  app-store:
+    name: ${{ matrix.scheme }} — archive and upload to App Store Connect
+    needs: version
+    runs-on: <runner>
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # >>> platform: iOS, no-fastlane
+          # The companion watch app (embed: true) is archived inside the iOS app — no separate watchOS upload.
+          - scheme: <AppName>-iOS
+            platform: iOS
+          # <<< platform: iOS, no-fastlane
+          # >>> platform: visionOS
+          - scheme: <AppName>-visionOS
+            platform: visionOS
+          # <<< platform: visionOS
+          # >>> watchos-standalone
+          - scheme: <AppName>-watchOS
+            platform: watchOS
+          # <<< watchos-standalone
+    env:
+      SCHEME: ${{ matrix.scheme }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Select Xcode <xcode-version>
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '<xcode-version>'
+
+      # >>> generator: xcodegen
+      - name: Generate the Xcode project
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+      # <<< generator: xcodegen
+      # >>> generator: tuist
+      - name: Generate the Xcode project
+        run: |
+          command -v tuist >/dev/null || brew install --cask tuist
+          tuist generate --no-open
+      # <<< generator: tuist
+
+      # The base64 of AuthKey_<id>.p8 — the same secret iru-setup-apple-app's Fastfile reads. Written with umask 077
+      # and removed in the last step.
+      - name: Write the App Store Connect API key
+        env:
+          API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          umask 077
+          printf '%s' "$API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+
+      - name: Archive
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+        run: |
+          xcodebuild archive -project <AppName>.xcodeproj -scheme "$SCHEME" \
+            -destination "generic/platform=$PLATFORM" -archivePath "build/$SCHEME.xcarchive" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" -quiet
+
+      - name: Export and upload to App Store Connect
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string></string>
+          </dict>
+          </plist>
+          PLIST
+          plutil -replace teamID -string "$APPLE_TEAM_ID" "$RUNNER_TEMP/ExportOptions.plist"
+          xcodebuild -exportArchive -archivePath "build/$SCHEME.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" -exportPath build/export \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Remove the App Store Connect API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+  # <<< app-store-job
+  # >>> platform: iOS, fastlane
+
+  # Only when fastlane/Fastfile exists and signing: fastlane-match — the Fastfile's own lanes (iru-setup-apple-app):
+  # `build` runs `match(type: "appstore", readonly: is_ci)` + build_app, `beta` uploads to TestFlight, `release`
+  # submits to the App Store. Fastlane is preinstalled on GitHub's macOS images; a committed Gemfile switches the
+  # command to `bundle install && bundle exec fastlane …`.
+  fastlane-ios:
+    name: <AppName>-iOS — fastlane match + <release-lane> lane
+    needs: version
+    runs-on: <runner>
+    timeout-minutes: 90
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Select Xcode <xcode-version>
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '<xcode-version>'
+
+      # >>> generator: xcodegen
+      - name: Generate the Xcode project
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+      # <<< generator: xcodegen
+      # >>> generator: tuist
+      - name: Generate the Xcode project
+        run: |
+          command -v tuist >/dev/null || brew install --cask tuist
+          tuist generate --no-open
+      # <<< generator: tuist
+
+      # match only supplies certificates and profiles; pilot/deliver authenticate with the API key, given as the JSON
+      # file fastlane reads from APP_STORE_CONNECT_API_KEY_PATH (pilot's, deliver's and match's api_key_path env).
+      - name: Write the App Store Connect API key for fastlane
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import base64, json, os
+          path = os.path.join(os.environ["RUNNER_TEMP"], "asc_api_key.json")
+          json.dump({
+              "key_id": os.environ["ASC_KEY_ID"],
+              "issuer_id": os.environ["ASC_ISSUER_ID"],
+              "key": base64.b64decode(os.environ["API_KEY_BASE64"]).decode(),
+              "in_house": False,
+          }, open(path, "w"))
+          PY
+          echo "APP_STORE_CONNECT_API_KEY_PATH=$RUNNER_TEMP/asc_api_key.json" >> "$GITHUB_ENV"
+
+      # MATCH_GIT_BASIC_AUTHORIZATION (base64 of "<user>:<personal-access-token>") lets match clone a private certs
+      # repository over HTTPS; without it the clone prompts for credentials and the job hangs.
+      - name: Run fastlane <release-lane>
+        env:
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+        run: fastlane ios <release-lane>
+
+      - name: Remove the App Store Connect API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/asc_api_key.json"
+  # <<< platform: iOS, fastlane
+  # >>> platform: macOS
+
+  # Developer ID + notarization (iru-setup-macos-github-workflows' developer-id job, minus the DMG): the scaffold's
+  # macOS target has ENABLE_HARDENED_RUNTIME. Developer ID certificates can't be created by -allowProvisioningUpdates
+  # (only the Account Holder can), so the exported .p12 is imported into a temporary keychain.
+  macos-developer-id:
+    name: <AppName>-macOS — Developer ID, notarize, staple
+    needs: version
+    runs-on: <runner>
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Select Xcode <xcode-version>
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '<xcode-version>'
+
+      # >>> generator: xcodegen
+      - name: Generate the Xcode project
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+      # <<< generator: xcodegen
+      # >>> generator: tuist
+      - name: Generate the Xcode project
+        run: |
+          command -v tuist >/dev/null || brew install --cask tuist
+          tuist generate --no-open
+      # <<< generator: tuist
+
+      - name: Import the Developer ID Application certificate
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+
+      - name: Write the App Store Connect API key
+        env:
+          API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          umask 077
+          printf '%s' "$API_KEY_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # Manual Developer ID signing: no development certificate or provisioning profile is needed on the runner.
+      - name: Archive
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcodebuild archive -project <AppName>.xcodeproj -scheme <AppName>-macOS \
+            -destination 'generic/platform=macOS' -archivePath build/<AppName>-macOS.xcarchive \
+            CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Developer ID Application" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" -quiet
+
+      - name: Export with Developer ID
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/ExportOptions-macos.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>developer-id</string>
+            <key>destination</key>
+            <string>export</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string></string>
+          </dict>
+          </plist>
+          PLIST
+          plutil -replace teamID -string "$APPLE_TEAM_ID" "$RUNNER_TEMP/ExportOptions-macos.plist"
+          xcodebuild -exportArchive -archivePath build/<AppName>-macOS.xcarchive \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions-macos.plist" -exportPath build/export-macos \
+            -allowProvisioningUpdates -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          codesign --verify --deep --strict --verbose=2 build/export-macos/<AppName>.app
+
+      # notarytool takes a zip, dmg or pkg — never a bare .app — and a zip can't be stapled: notarize a ditto zip,
+      # staple the app, then re-zip the stapled app as the artifact to ship.
+      - name: Notarize and staple
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent build/export-macos/<AppName>.app build/<AppName>-notarize.zip
+          result="$(xcrun notarytool submit build/<AppName>-notarize.zip --key "$ASC_KEY_PATH" \
+            --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" --wait --timeout 30m --output-format json)"
+          echo "$result"
+          id="$(python3 -c 'import json, sys; print(json.load(sys.stdin)["id"])' <<< "$result")"
+          status="$(python3 -c 'import json, sys; print(json.load(sys.stdin).get("status", ""))' <<< "$result")"
+          if [[ "$status" != "Accepted" ]]; then
+            xcrun notarytool log "$id" --key "$ASC_KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" || true
+            echo "::error::Notarization ended with status '$status'."
+            exit 1
+          fi
+          xcrun stapler staple build/export-macos/<AppName>.app
+          xcrun stapler validate build/export-macos/<AppName>.app
+          ditto -c -k --keepParent build/export-macos/<AppName>.app "build/<AppName>-macOS-$VERSION.zip"
+
+      - name: Upload the notarized app as a workflow artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: <AppName>-macOS
+          path: build/<AppName>-macOS-${{ needs.version.outputs.version }}.zip
+          retention-days: 30
+
+      - name: Attach the notarized app to the GitHub Release
+        if: github.event_name == 'release' || inputs.attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: gh release upload "$RELEASE_TAG" "build/<AppName>-macOS-$VERSION.zip" --clobber
+
+      - name: Remove the App Store Connect API key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/AuthKey.p8"
+  # <<< platform: macOS

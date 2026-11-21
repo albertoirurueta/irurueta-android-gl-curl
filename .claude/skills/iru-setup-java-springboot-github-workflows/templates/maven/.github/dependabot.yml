@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      maven-dependencies:
+        patterns: [ "*" ]
+
+  - package-ecosystem: docker
+    # This reactor builds its image with Cloud Native Buildpacks (spring-boot:build-image), so there is
+    # normally no Dockerfile — but Dependabot's docker ecosystem also tracks image tags referenced from
+    # compose.yaml at the repository root (written by iru-setup-java-springboot-testcontainers), which is
+    # what this entry actually keeps current: Postgres/MongoDB/Kafka/etc. and the API-mock image.
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      docker-dependencies:
+        patterns: [ "*" ]
+
+  # Only when the manifest's `frontend` field isn't `none` (e.g. `hilla`) — directory is the real web module
+  # iru-setup-java-springboot-hilla scaffolded the frontend into (survey Step 0; normally "/boot"), since
+  # that's where package.json/package-lock.json actually live, never "/" or "/<web-module>/src/main/frontend".
+  - package-ecosystem: npm
+    directory: "/boot"
+    schedule:
+      interval: weekly
+    groups:
+      npm-dependencies:
+        patterns: [ "*" ]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions-dependencies:
+        patterns: [ "*" ]

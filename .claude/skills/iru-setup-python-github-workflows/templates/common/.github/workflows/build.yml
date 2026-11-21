@@ -1,0 +1,359 @@
+name: Build
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ]
+  pull_request:
+    branches: [ <integration-branch>, <stable-branch> ]
+  workflow_dispatch:
+
+# A newer push to the same branch/PR makes the running build obsolete.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # uv: fail instead of silently re-resolving when uv.lock is stale; colour in logs.
+  UV_LOCKED: '1'
+  FORCE_COLOR: '1'
+
+jobs:
+  quality:
+    name: Lint, format, types and framework checks
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test     # django
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up uv and Python <python-version>
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: '<python-version>'
+          enable-cache: true
+
+      # --locked: the job fails when uv.lock no longer matches pyproject.toml.
+      - name: Install the project and the dev group
+        run: uv sync --locked
+
+      - name: Lint (Ruff)
+        run: uv run ruff check .
+
+      - name: Formatting (Ruff)
+        run: uv run ruff format --check .
+
+      - name: Type check (mypy)
+        run: uv run mypy .
+
+      # django — system checks and "every model change has a migration" (no database needed).
+      - name: Django system checks
+        run: uv run python manage.py check
+      - name: Missing migrations
+        run: uv run python manage.py makemigrations --check --dry-run
+
+      # drf — the schema must generate without warnings (drf-spectacular).
+      - name: Validate the OpenAPI schema
+        run: |
+          mkdir -p build
+          uv run python manage.py spectacular --validate --fail-on-warn --file build/openapi.yaml
+      # ninja — the schema must build (needs "ninja" in INSTALLED_APPS; the command doesn't create directories).
+      - name: Export the OpenAPI schema (Django Ninja)
+        run: |
+          mkdir -p build
+          uv run python manage.py export_openapi_schema --api <ninja-api> --output build/openapi.json
+
+      # sonar + ruff-report — Ruff's JSON for Sonar's external-issue import (the gate itself is "Lint (Ruff)").
+      - name: Ruff report for Sonar
+        run: |
+          mkdir -p build/reports
+          uv run ruff check . --exit-zero --output-format json --output-file build/reports/ruff.json
+      - name: Upload the Ruff report
+        uses: actions/upload-artifact@v7
+        with:
+          name: ruff-report
+          path: build/reports/ruff.json
+          retention-days: 7
+
+  tests:
+    name: Tests (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # matrix — [ <python-matrix> ] only for ci-tests: full on a public repository; otherwise the single
+        # primary version.
+        python: [ '<python-version>' ]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up uv and Python ${{ matrix.python }}
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+
+      - name: Install the project and the dev group
+        run: uv sync --locked
+
+      # Container-free tests only (SQLite in-memory, dependency overrides); writes build/coverage/coverage.xml
+      # (Cobertura) and build/test-results/pytest.xml, and enforces [tool.coverage.report] fail_under (80).
+      - name: Fast tests with coverage
+        run: >-
+          uv run pytest -m "not integration" --cov --cov-report=xml --cov-report=term-missing
+          --junitxml=build/test-results/pytest.xml
+
+      - name: Upload test and coverage reports
+        if: ${{ always() && matrix.python == '<python-version>' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            build/coverage/
+            build/test-results/
+          retention-days: 7
+
+  # fastapi with Alembic (database: postgresql | sqlite), or django. Real PostgreSQL as a service container
+  # (postgresql); with database: sqlite drop `services:` and use the SQLite env lines below instead.
+  migrations:
+    name: Migration checks (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres            # throwaway CI container, never a real credential
+          POSTGRES_DB: app
+        ports: [ '5432:5432' ]
+        options: >-
+          --health-cmd="pg_isready -U postgres" --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      # fastapi — the only setting Alembic's env.py reads (DatabaseSettings, env_prefix APP_).
+      <db-url-env>: postgresql+asyncpg://postgres:postgres@localhost:5432/app
+      # django — production settings with CI dummies for every variable production.py requires (Step 1);
+      # config/env.py reads POSTGRES_* (no DATABASE_URL). DB/USER default to <package>, so set them explicitly.
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_ALLOWED_HOSTS: ci.example.com
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: '5432'
+      POSTGRES_DB: app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres            # the service container's throwaway password
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up uv and Python <python-version>
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: '<python-version>'
+          enable-cache: true
+
+      - name: Install the project
+        run: uv sync --locked
+
+      # database: sqlite — the database file's directory must exist.
+      - name: Create the SQLite directory
+        run: mkdir -p build
+
+      # fastapi — upgrade from an empty database, no drift between models and revisions, one head, and a full
+      # downgrade/upgrade round trip (irurueta docs: backend/pyramid/sqlalchemy-transactions-and-migrations.adoc).
+      - name: Apply every revision
+        run: uv run alembic upgrade head
+      - name: Models match the migrations
+        run: uv run alembic check
+      - name: Single head
+        run: |
+          heads="$(uv run alembic heads | grep -c '(head)' || true)"
+          if [ "$heads" -gt 1 ]; then
+            echo "::error::$heads Alembic heads — merge them (alembic merge heads) before releasing."
+            exit 1
+          fi
+      - name: Downgrade/upgrade round trip
+        run: |
+          uv run alembic downgrade base
+          uv run alembic upgrade head
+
+      # django — no SECRET_KEY default exists outside local/test settings, so CI generates a masked one per run
+      # (works on fork pull requests too, unlike a repository secret).
+      # 64 random bytes, URL-safe: >= 50 characters, no django-insecure- prefix (security.W009).
+      - name: Generate a throw-away DJANGO_SECRET_KEY
+        run: |
+          key="$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')"
+          echo "::add-mask::$key"
+          echo "DJANGO_SECRET_KEY=$key" >> "$GITHUB_ENV"
+      - name: Deployment checks (production settings)
+        run: uv run python manage.py check --deploy --fail-level WARNING
+      - name: Apply the migrations
+        run: uv run python manage.py migrate --noinput
+      - name: No unapplied migrations
+        run: uv run python manage.py migrate --check
+
+  # image — only with distribution: internal | store (a Dockerfile exists). Builds the release image without pushing,
+  # so a broken Dockerfile fails the pull request rather than the release; the GHA cache is shared with release.yml.
+  image:
+    name: Container image build check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Build the image (not pushed)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: false
+          tags: <image-name>:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # sonar: cloud | self-hosted only — drop the whole job for sonar: none. Fork pull requests get no secrets.
+  sonar:
+    name: SonarCloud analysis
+    needs: [ quality, tests ]
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          # Sonar attributes issues and new code using full history.
+          fetch-depth: 0
+      - name: Download test and coverage reports
+        uses: actions/download-artifact@v8
+        with:
+          name: test-reports
+          path: build
+      # ruff-report only
+      - name: Download the Ruff report
+        uses: actions/download-artifact@v8
+        with:
+          name: ruff-report
+          path: build/reports
+      # Reads sonar-project.properties (sources, tests, coverage.xml, pytest*.xml, ruff.json paths).
+      - name: Run SonarCloud analysis
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # SONAR_HOST_URL: <sonar-host-url>    # sonar: self-hosted only
+
+  # docs — built on every push (a broken page fails the branch), published from <stable-branch> only.
+  docs:
+    name: Build documentation
+    needs: [ quality, tests ]
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test     # django (schema export)
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      # sphinx | openapi
+      - name: Set up uv and Python <python-version>
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: '<python-version>'
+          enable-cache: true
+
+      # sphinx — docs/api (autodoc + napoleon + sphinx-autodoc-typehints); -W turns every warning into a failure.
+      - name: Build the API reference (Sphinx)
+        run: uv run --group docs sphinx-build -W --keep-going -b html docs/api build/api-docs
+
+      # openapi, fastapi — the app's OpenAPI document next to the reference.
+      - name: Export the OpenAPI document
+        run: |
+          mkdir -p build/api-docs
+          uv run python scripts/export_openapi.py build/api-docs/openapi.json
+      # openapi, drf
+      - name: Export the OpenAPI schema (drf-spectacular)
+        run: |
+          mkdir -p build/api-docs
+          uv run python manage.py spectacular --validate --fail-on-warn --file build/api-docs/openapi.yaml
+      # openapi, ninja — Ninja's own command (needs "ninja" in INSTALLED_APPS and the API mounted in urls.py).
+      - name: Export the OpenAPI schema (Django Ninja)
+        run: |
+          mkdir -p build/api-docs
+          uv run python manage.py export_openapi_schema --api <ninja-api> --output build/api-docs/openapi.json
+
+      - name: Set up Node for the Antora toolchain
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge documentation
+        run: |
+          touch docs/build/site/.nojekyll
+          mkdir -p docs/build/site/api && cp -r build/api-docs/. docs/build/site/api/    # sphinx | openapi only
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into the site directory.
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk docs/build/site | cut -f1)
+      #     echo "site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      # pages: yes
+      - name: Upload Pages artifact
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/<stable-branch>' }}
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/build/site
+
+      # pages: no — instead of "Upload Pages artifact" (and drop the deploy-docs job)
+      - name: Upload documentation
+        uses: actions/upload-artifact@v7
+        with:
+          name: documentation
+          path: docs/build/site
+          retention-days: 14
+
+  # pages: yes only — Settings → Pages → Source must be "GitHub Actions".
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: docs
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/<stable-branch>' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,29 @@
+[versions]
+openapi-generator = "<latest>"     # same number as openapi-generator-maven-plugin
+protobuf-plugin = "<latest>"       # com.google.protobuf (0.10.x)
+protobuf = "<Boot's protobuf-java.version>"
+grpc-java = "<Boot's grpc-java.version>"
+grpc-kotlin = "<Boot's grpc-kotlin.version>"
+protoc-gen-doc = "<latest>"
+avro = "<latest 1.12.x>"
+avro-plugin = "<latest>"           # com.bakdata.gradle.avro
+graphql-codegen = "<latest>"
+
+[libraries]
+grpc-stub = { module = "io.grpc:grpc-stub" }                       # BOM-managed through platform(spring-boot-dependencies)
+grpc-protobuf = { module = "io.grpc:grpc-protobuf" }
+grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub" }
+protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin" }
+# Executables, not dependencies: the BOM doesn't reach them, so pin to the BOM's numbers explicitly.
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+grpc-protoc-gen-java = { module = "io.grpc:protoc-gen-grpc-java", version.ref = "grpc-java" }
+grpc-protoc-gen-kotlin = { module = "io.grpc:protoc-gen-grpc-kotlin", version.ref = "grpc-kotlin" }
+protoc-gen-doc = { module = "io.github.pseudomuto:protoc-gen-doc", version.ref = "protoc-gen-doc" }
+avro = { module = "org.apache.avro:avro", version.ref = "avro" }
+graphql-java-codegen = { module = "io.github.kobylynskyi:graphql-java-codegen", version.ref = "graphql-codegen" }
+
+[plugins]
+openapi-generator = { id = "org.openapi.generator", version.ref = "openapi-generator" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
+avro = { id = "com.bakdata.gradle.avro", version.ref = "avro-plugin" }
+graphql-codegen = { id = "io.github.kobylynskyi.graphql.codegen", version.ref = "graphql-codegen" }

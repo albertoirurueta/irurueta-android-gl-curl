@@ -1,0 +1,260 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        type: choice
+        options: [ dev, prod ]        # from the infra/envs/* directories found in Step 0
+      image_tag:
+        description: Image tag to deploy (defaults to the commit SHA)
+        required: false
+        type: string
+
+concurrency:
+  # Shared with promote.yml and undeploy.yml: a deploy, a promotion and a teardown never interleave.
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  TF_DIR: infra/envs/${{ inputs.environment }}
+  STRATEGY: <canary>                  # deploy.rolling.strategy
+  ADVANCE: <hybrid>                   # deploy.rolling.advance
+  STEPS: "<10 50 100>"                # deploy.rolling.steps, space separated (blue-green: "100")
+  BAKE_MINUTES: "<10>"                # deploy.rolling.bakeMinutes
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+
+permissions:
+  contents: read
+  id-token: write        # required for OIDC; this is the whole reason no access key is needed
+  packages: write
+
+jobs:
+  build-image:
+    name: Build image
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Refuse a production deploy from a non-main branch
+        if: inputs.environment == 'prod' && github.ref_name != '<main-branch>'
+        run: |
+          echo "::error::Production deploys must run from <main-branch>."
+          exit 1
+
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven
+
+      - name: Resolve image tag
+        id: meta
+        env:
+          IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+        run: echo "tag=${IMAGE_TAG_INPUT:-$GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Build and push the container image
+        # Same image build as Step 2 (registry login rules included).
+        run: |
+          mvn -B -ntp -pl boot -am spring-boot:build-image -DskipTests \
+            -Dspring-boot.build-image.imageName=${{ vars.IMAGE_REPOSITORY }}:${{ steps.meta.outputs.tag }} \
+            -Dspring-boot.build-image.publish=true \
+            -Ddocker.publishRegistry.username=${{ secrets.REGISTRY_USERNAME }} \
+            -Ddocker.publishRegistry.password=${{ secrets.REGISTRY_PASSWORD }}
+
+  deploy-green:
+    name: Deploy new version at 0 % traffic
+    needs: build-image
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      first_deploy: ${{ steps.apply.outputs.first_deploy }}
+      candidate_url: ${{ steps.apply.outputs.candidate_url }}
+      # true once THIS run has marked a candidate; the rollback job only acts on a rollout this run started.
+      marked: ${{ steps.apply.outputs.marked }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Load rollout functions
+        run: |
+          cat > "$RUNNER_TEMP/rollout.sh" <<'ROLLOUT_EOF'
+          <the rollout functions block for the runtime, indented to this level>
+          ROLLOUT_EOF
+
+      - name: Tofu init
+        run: tofu -chdir="$TF_DIR" init
+
+      - name: Plan and apply the new version
+        id: apply
+        env:
+          TAG: ${{ needs.build-image.outputs.tag }}
+        run: |
+          source "$RUNNER_TEMP/rollout.sh"
+          # Only a state that genuinely lacks the rollout outputs is a first deploy; has_output fails the step on any
+          # error reading the state, so a lock or permission problem can never fall through to a 100 % apply.
+          if ! has_output rollout_target_groups; then
+            # First deploy of this environment: there is no stable version to keep, so apply everything at 100 %.
+            echo "first_deploy=true" >> "$GITHUB_OUTPUT"
+            tofu -chdir="$TF_DIR" plan -input=false -var="image_tag_blue=$TAG" -var="image_tag_green=$TAG" -out=tfplan
+            tofu -chdir="$TF_DIR" apply -input=false -auto-approve tfplan
+            exit 0
+          fi
+          echo "first_deploy=false" >> "$GITHUB_OUTPUT"
+          rollout_init
+          if rollout_active; then
+            echo "::error::A rollout is already in progress. Finish it with promote.yml (next / rollback / abort) first."
+            exit 1
+          fi
+          stable_tag="$(slot_image_tag "$STABLE_SLOT")"
+          # Mark the candidate BEFORE changing anything so a concurrent attempt is refused, and so a failed apply is rolled back.
+          rollout_mark_candidate
+          echo "marked=true" >> "$GITHUB_OUTPUT"
+          tofu -chdir="$TF_DIR" plan -input=false \
+            -var="image_tag_${STABLE_SLOT}=$stable_tag" -var="image_tag_${IDLE_SLOT}=$TAG" -out=tfplan
+          tofu -chdir="$TF_DIR" apply -input=false -auto-approve tfplan
+          # The idle slot is scaled to zero between rollouts: bring it to the stable slot's size and wait for it.
+          want="$(aws ecs describe-services --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE-$STABLE_SLOT" --query 'services[0].desiredCount' --output text)"
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service "$ECS_SERVICE-$IDLE_SLOT" --desired-count "$want" >/dev/null
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services "$ECS_SERVICE-$IDLE_SLOT"
+          # Guard: the new version must NOT have traffic yet.
+          if [ "$(rollout_current)" != "0" ]; then
+            echo "::error::Candidate already receives traffic ($(rollout_current) %); aborting."
+            exit 1
+          fi
+          echo "candidate_url=$(tfout rollout_candidate_url | jq -r .)" >> "$GITHUB_OUTPUT"
+
+  smoke-candidate:
+    name: Smoke test the candidate
+    needs: deploy-green
+    if: needs.deploy-green.outputs.first_deploy != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Smoke check on the candidate URL
+        env:
+          CANDIDATE_URL: ${{ needs.deploy-green.outputs.candidate_url }}
+        run: |
+          # The candidate takes no production traffic; this is the only thing exercising it until the first shift.
+          for _ in $(seq 1 30); do
+            if curl -fsS "$CANDIDATE_URL" >/dev/null; then echo "Candidate healthy"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::Candidate did not become healthy within 5 minutes"
+          exit 1
+
+  shift:
+    name: Shift traffic
+    needs: [ build-image, deploy-green, smoke-candidate ]
+    if: needs.deploy-green.outputs.first_deploy != 'true'      # omit this whole job for advance: manual
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Load rollout functions
+        run: |
+          cat > "$RUNNER_TEMP/rollout.sh" <<'ROLLOUT_EOF'
+          <the same rollout functions block>
+          ROLLOUT_EOF
+
+      - name: Tofu init
+        run: tofu -chdir="$TF_DIR" init
+
+      - name: Shift to the first step and gate it
+        run: |
+          source "$RUNNER_TEMP/rollout.sh"
+          rollout_init
+          # advance: auto  -> walk every step, gating each one, then finalise.
+          # advance: hybrid-> dev behaves like auto; prod stops after the first gated step and waits for promote.yml.
+          walk_all=false
+          if [ "$ADVANCE" = auto ] || { [ "$ADVANCE" = hybrid ] && [ "${{ inputs.environment }}" != prod ]; }; then walk_all=true; fi
+          pct=0
+          while true; do
+            nxt="$(next_step "$pct")"
+            [ -n "$nxt" ] || break
+            rollout_set "$nxt"
+            pct="$nxt"
+            gate_wait
+            if [ "$walk_all" != true ]; then break; fi
+          done
+          if [ "$pct" -ge 100 ]; then
+            rollout_finalise
+            echo "### Rollout complete: 100 % on the new version" >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### Rollout paused at ${pct} % — the metric gate passed"
+              echo "Run **promote.yml** for \`${{ inputs.environment }}\` with target \`next\` to continue, \`rollback\` to revert."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  rollback:
+    name: Roll back automatically
+    needs: [ build-image, deploy-green, smoke-candidate, shift ]
+    # A failed deploy, smoke test or gate returns 100 % to the previous version. Omit `shift` from needs for advance: manual.
+    # Only when this run marked the candidate: a deploy refused because another rollout is in progress (or one that failed
+    # before marking) must leave that rollout untouched.
+    if: ${{ always() && needs.deploy-green.outputs.marked == 'true' && (needs.deploy-green.result == 'failure' || needs.smoke-candidate.result == 'failure' || needs.shift.result == 'failure') }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Load rollout functions
+        run: |
+          cat > "$RUNNER_TEMP/rollout.sh" <<'ROLLOUT_EOF'
+          <the same rollout functions block>
+          ROLLOUT_EOF
+
+      - name: Tofu init
+        run: tofu -chdir="$TF_DIR" init
+
+      - name: Restore 100 % on the previous version
+        run: |
+          source "$RUNNER_TEMP/rollout.sh"
+          rollout_init
+          if rollout_active; then rollout_rollback; fi
+          echo "### Rolled back: 100 % on the previous version" >> "$GITHUB_STEP_SUMMARY"

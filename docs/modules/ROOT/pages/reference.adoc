@@ -1,0 +1,44 @@
+= Reference
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+== Generated reports
+
+[cols="1,3",options="header"]
+|===
+|Report
+|Description
+
+|https://albertoirurueta.github.io/irurueta-android-gl-curl/api/index.html[API documentation]
+|KDoc API reference of the `lib` module, generated with Dokka (`./gradlew :lib:dokkaGenerate`) and deployed to GitHub
+Pages by the CI workflow.
+
+|https://sonarcloud.io/dashboard?id=albertoirurueta_irurueta-android-gl-curl[SonarCloud]
+|Code quality, test coverage, duplication and security analysis.
+
+|https://github.com/albertoirurueta/irurueta-android-gl-curl/actions[GitHub Actions]
+|CI builds with unit and instrumented test results.
+|===
+
+== Links of interest
+
+[cols="1,3",options="header"]
+|===
+|Link
+|Description
+
+|https://github.com/albertoirurueta/irurueta-android-gl-curl[GitHub repository]
+|Source code, issues and pull requests.
+
+|https://central.sonatype.com/artifact/com.irurueta/irurueta-android-gl-curl[Maven Central]
+|Published artifacts (`com.irurueta:irurueta-android-gl-curl`).
+
+|https://github.com/albertoirurueta/irurueta-android-glutils[irurueta-android-glutils]
+|OpenGL utilities used by this library, including `GLTextureView`, the base class of `CurlTextureView`.
+
+|https://github.com/harism/android-pagecurl[harism/android-pagecurl]
+|Original page curl implementation this library is based on.
+
+|https://www.apache.org/licenses/LICENSE-2.0[Apache License 2.0]
+|License of the library.
+|===

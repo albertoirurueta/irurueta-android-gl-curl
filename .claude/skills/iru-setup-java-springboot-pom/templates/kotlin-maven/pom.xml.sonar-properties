@@ -1,0 +1,7 @@
+    <!-- Explicit because `mvn sonar:sonar` runs standalone in CI, before kotlin-maven-plugin has registered
+         src/main/kotlin as a source root. Paths must exist in every jar module (Step 4 creates them); pom-packaged
+         modules ignore missing ones. A module that also has Java sources overrides these two in its own pom. -->
+    <sonar.sources>src/main/kotlin</sonar.sources>
+    <sonar.tests>src/test/kotlin</sonar.tests>
+    <sonar.kotlin.detekt.reportPaths>target/detekt.xml</sonar.kotlin.detekt.reportPaths>
+    <sonar.kotlin.ktlint.reportPaths>target/ktlint.xml</sonar.kotlin.ktlint.reportPaths>

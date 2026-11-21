@@ -1,0 +1,119 @@
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment whose rollout to advance
+        required: true
+        type: choice
+        options: [ dev, prod ]        # same list as deploy.yml
+      target:
+        description: next = the next step; a percentage = that step; rollback = back to 100 % on the previous version; abort = same, keeping the candidate for debugging
+        required: true
+        type: choice
+        default: next
+        options: [ next, "10", "50", "100", rollback, abort ]   # percentages = deploy.rolling.steps, in order
+
+concurrency:
+  group: deploy-${{ inputs.environment }}     # same group as deploy.yml and undeploy.yml
+  cancel-in-progress: false
+
+env:
+  TF_DIR: infra/envs/${{ inputs.environment }}
+  ADVANCE: <hybrid>
+  STEPS: "<10 50 100>"
+  BAKE_MINUTES: "<10>"
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER }}
+  ECS_SERVICE: ${{ vars.ECS_SERVICE }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  promote:
+    name: Promote ${{ inputs.environment }} (${{ inputs.target }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Refuse a production promotion from a non-main branch
+        if: inputs.environment == 'prod' && github.ref_name != '<main-branch>'
+        run: |
+          echo "::error::Production promotions must run from <main-branch>."
+          exit 1
+
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Load rollout functions
+        run: |
+          cat > "$RUNNER_TEMP/rollout.sh" <<'ROLLOUT_EOF'
+          <the same rollout functions block>
+          ROLLOUT_EOF
+
+      - name: Tofu init
+        run: tofu -chdir="$TF_DIR" init
+
+      - name: Advance, hold or revert the rollout
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          source "$RUNNER_TEMP/rollout.sh"
+          summary() { echo "$1" | tee -a "$GITHUB_STEP_SUMMARY"; }
+          rollout_init
+
+          case "$TARGET" in
+            rollback|abort)
+              if ! rollout_active; then summary "No rollout in progress for ${{ inputs.environment }}; nothing to do."; exit 0; fi
+              "rollout_$TARGET"
+              summary "### ${TARGET^}: 100 % on the previous version (${{ inputs.environment }})"
+              exit 0 ;;
+          esac
+
+          if ! rollout_active; then
+            echo "::error::No rollout in progress for ${{ inputs.environment }}. Run deploy.yml first."
+            exit 1
+          fi
+          pct="$(rollout_current)"
+          nxt="$(next_step "$pct")"
+          if [ "$TARGET" = next ]; then target="$nxt"; else target="$TARGET"; fi
+          [ -n "$target" ] || { echo "::error::Already at the last step ($pct %)."; exit 1; }
+          case " $STEPS " in *" $target "*) ;; *) echo "::error::$target % is not one of the configured steps ($STEPS)."; exit 1 ;; esac
+          # Never skip past the configured steps: going forward is only allowed to the very next one.
+          if [ "$target" -gt "$pct" ] && [ "$target" != "$nxt" ]; then
+            echo "::error::Refusing to jump from $pct % to $target %; the next step is $nxt %."
+            exit 1
+          fi
+
+          # The previous step must have held its gate before anything moves forward (auto and hybrid).
+          if [ "$ADVANCE" != manual ] && [ "$target" -gt "$pct" ]; then
+            if ! rollout_gate_ok; then
+              rollout_rollback
+              summary "### Gate failing at ${pct} % — rolled back to 100 % on the previous version"
+              exit 1
+            fi
+          fi
+
+          rollout_set "$target"
+          # Hold the new step for the soak time; a breach rolls back automatically (auto and hybrid).
+          if [ "$ADVANCE" != manual ] && ! gate_wait; then
+            rollout_rollback
+            summary "### Gate breached at ${target} % — rolled back to 100 % on the previous version"
+            exit 1
+          fi
+          if [ "$target" -ge 100 ]; then
+            rollout_finalise
+            summary "### Rollout complete: 100 % on the new version (${{ inputs.environment }})"
+          else
+            summary "### Now at ${target} % (${{ inputs.environment }}) — run promote.yml again with target \`next\` when it looks safe"
+          fi

@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      contents: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+
+      - name: Install dependencies
+        run: <install-command>
+
+      - name: Build production bundle
+        run: <package-manager-run> build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: <web-dist-dir>/ # react (Vite): dist/ ; angular: dist/<project>/browser/ (see Step 4)
+          retention-days: 30
+
+      # pages: yes only — omit these three steps (and the permissions/environment above) when pages: no
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: <web-dist-dir>/
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

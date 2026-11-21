@@ -1,0 +1,22 @@
+<configuration>
+  <protoc kind="binary-maven"><version>${protobuf-java.version}</version></protoc>
+  <sourceDirectories>
+    <sourceDirectory>${maven.multiModuleProjectDirectory}/apis/grpc-server</sourceDirectory>
+  </sourceDirectories>
+  <!-- Kotlin DSL builders (orderReply { id = ... }) next to the Java message classes. -->
+  <kotlinEnabled>true</kotlinEnabled>
+  <plugins>
+    <plugin kind="binary-maven">
+      <groupId>io.grpc</groupId>
+      <artifactId>protoc-gen-grpc-java</artifactId>
+      <version>${grpc-java.version}</version>
+    </plugin>
+    <!-- Coroutine service base classes and stubs. A JVM plugin (a jar), not a native binary. -->
+    <plugin kind="jvm-maven">
+      <groupId>io.grpc</groupId>
+      <artifactId>protoc-gen-grpc-kotlin</artifactId>
+      <version>${grpc-kotlin.version}</version>
+      <classifier>jdk8</classifier>
+    </plugin>
+  </plugins>
+</configuration>

@@ -1,0 +1,17 @@
+<plugin>
+  <groupId><protobuf-plugin-group></groupId>
+  <artifactId>protobuf-maven-plugin</artifactId>
+  <configuration>
+    <sourceDirectories>
+      <sourceDirectory>${maven.multiModuleProjectDirectory}/apis/grpc-server</sourceDirectory>
+    </sourceDirectories>
+    <!-- plus the grpc-java protoc plugin, so service base classes are generated and not just messages -->
+  </configuration>
+  <executions>
+    <execution>
+      <goals>
+        <goal>generate</goal>
+      </goals>
+    </execution>
+  </executions>
+</plugin>

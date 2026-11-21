@@ -1,0 +1,58 @@
+opt_in_rules:
+  - array_init
+  - closure_end_indentation
+  - closure_spacing
+  - collection_alignment
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - contains_over_first_not_nil
+  - discouraged_optional_boolean
+  - empty_count
+  - empty_string
+  - explicit_init
+  - fatal_error_message
+  - file_header  # omit this line too if "No license" was chosen in Step 2
+  - first_where
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - last_where
+  - legacy_random
+  - literal_expression_end_indentation
+  - multiline_arguments
+  - multiline_parameters
+  - operator_usage_whitespace
+  - overridden_super_call
+  - pattern_matching_keywords
+  - prohibited_super_call
+  - redundant_nil_coalescing
+  - redundant_type_annotation
+  - sorted_first_last
+  - strict_fileprivate
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+  - vertical_whitespace_closing_braces
+  - vertical_whitespace_opening_braces
+  - yoda_condition
+
+# Omit this whole `file_header` entry if "No license" was chosen in Step 2
+file_header:
+  required_pattern: |
+    \/\/
+    \/\/ Copyright \(C\) \d{4} .*
+    \/\/
+
+line_length:
+  warning: 120
+  error: 150
+
+excluded:
+  - .build
+  - Tests
+
+# `swiftlint analyze` only (needs a compiler log) — not a lint rule
+analyzer_rules:
+  - unused_import
+
+# The formatter owns layout: swift-format and SwiftFormat both add trailing commas to multi-line collections
+disabled_rules:
+  - trailing_comma

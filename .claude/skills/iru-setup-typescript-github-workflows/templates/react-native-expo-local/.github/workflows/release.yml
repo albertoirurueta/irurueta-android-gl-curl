@@ -1,0 +1,137 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android release build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+
+      - name: Install dependencies
+        run: <install-command>
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      # No --non-interactive flag: `expo prebuild` doesn't accept one (it aborts on arg parsing), and the CI=true
+      # environment GitHub Actions sets already makes it non-interactive
+      - name: Prebuild native Android project
+        run: npx expo prebuild --platform android
+
+      # Omit these two decode/write steps entirely if distribution: none — an unsigned bundleRelease still
+      # builds, but has no keystore to sign a distributable artifact with
+      - name: Decode Android keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+      - name: Write Gradle signing properties
+        run: |
+          cat >> android/gradle.properties <<EOF
+          RELEASE_STORE_FILE=release.keystore
+          RELEASE_STORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build release bundle
+        working-directory: android
+        run: ./gradlew bundleRelease
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-release.aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
+  ios:
+    name: iOS release build
+    runs-on: macos-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+
+      - name: Install dependencies
+        run: <install-command>
+
+      # No --non-interactive flag here either (see the android job); the generated workspace/scheme are named
+      # after app.json's expo.name (e.g. ios/MyApp.xcworkspace + scheme MyApp), never `App` — resolve
+      # <ios-workspace>/<ios-scheme> from ios/*.xcworkspace per Step 1/Step 4
+      - name: Prebuild native iOS project
+        run: npx expo prebuild --platform ios
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      # distribution: none only — compile the archive with signing disabled (nothing distributable comes out of
+      # it, so drop the Export IPA and Upload IPA steps too; the .xcarchive itself is the build proof). Drop this
+      # step instead, and keep the signed block below, when distribution is internal/store.
+      - name: Archive (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild -workspace <ios-workspace>.xcworkspace -scheme <ios-scheme> -configuration Release archive \
+            -archivePath build/App.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+
+      # Omit this whole block if distribution: none. Signing is delegated to xcodebuild's automatic (cloud-managed)
+      # signing: with -allowProvisioningUpdates plus the App Store Connect API key, xcodebuild itself registers the
+      # device-less distribution certificate and downloads/refreshes the provisioning profile — no certificate or
+      # profile is imported into a keychain by this workflow. The API key must have the App Manager (or Admin)
+      # role for that to work; see the notes below for the manually-managed-certificate alternative.
+      - name: Decode App Store Connect API key
+        env:
+          APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          echo "$APP_STORE_CONNECT_API_KEY_BASE64" | base64 -d > AuthKey.p8
+
+      - name: Archive (signed)
+        working-directory: ios
+        run: |
+          xcodebuild -workspace <ios-workspace>.xcworkspace -scheme <ios-scheme> -configuration Release archive \
+            -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$PWD/../AuthKey.p8" \
+            -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }} \
+            CODE_SIGN_STYLE=Automatic
+
+      - name: Export IPA
+        working-directory: ios
+        run: |
+          xcodebuild -exportArchive -archivePath build/App.xcarchive -exportPath build \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$PWD/../AuthKey.p8" \
+            -authenticationKeyID ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }} \
+            -exportOptionsPlist ExportOptions.plist
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-release.ipa
+          path: ios/build/*.ipa

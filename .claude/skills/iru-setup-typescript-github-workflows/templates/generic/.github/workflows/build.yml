@@ -1,0 +1,173 @@
+name: Build
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Only when package-manager: pnpm (Step 1) — must run before setup-node's cache step can find pnpm
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager> # 'npm' | 'pnpm' | 'yarn' — requires the matching lockfile to already exist
+
+      - name: Install dependencies
+        run: <install-command> # npm ci | pnpm install --frozen-lockfile | yarn install --frozen-lockfile (or --immutable for Yarn Berry)
+
+      - name: Lint
+        run: <package-manager-run> lint
+
+      - name: Check formatting
+        run: <package-manager-run> format
+
+      - name: Typecheck
+        run: <package-manager-run> typecheck
+
+      - name: Run tests with coverage
+        run: <package-manager-run> coverage
+
+      # Omit this whole step if sonar: none (Step 1). Also skipped on pull requests from a fork, which never
+      # get repository secrets, so SONAR_TOKEN would be empty and the scan would fail rather than just skip.
+      - name: Run SonarQube/SonarCloud analysis
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # Only when sonar: self-hosted — omit for sonar: cloud, which defaults to https://sonarcloud.io
+          SONAR_HOST_URL: <sonar-host-url>
+
+      # Omit this whole block if flavor is not one of: react, angular, ionic (react-native has no web build to
+      # drive a browser against; library has no UI at all) — and also omit it when ci-tests: unit (Step 1): e2e
+      # then stays a local-only suite, and unit tests + coverage above remain the CI gate
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+      - name: Run e2e tests
+        env:
+          # UI contract: the project's screenshot helper writes one PNG per state × direction × theme here
+          UI_SCREENSHOTS_DIR: ${{ github.workspace }}/.ui-screenshots
+        run: <package-manager-run> e2e
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Omit this whole step if docs-tool: none (Step 1). Keep exactly ONE of the two run: lines — the script name
+      # differs per docs-tool: `docs` for typedoc/compodoc (both write docs/api), `build-storybook` for storybook
+      # (writes storybook-static; it's the script Storybook's own installer adds, no `docs` alias exists for it)
+      - name: Build API docs
+        run: <package-manager-run> docs # docs-tool: typedoc | compodoc -> docs/api
+        # run: <package-manager-run> build-storybook # docs-tool: storybook -> storybook-static
+
+      # The Antora toolchain lives in docs/package.json + docs/package-lock.json (written by iru-setup-antora) and
+      # is always npm-managed there, whatever <package-manager> the root project uses — so this second setup-node
+      # caches docs/ from its own lockfile instead of re-downloading Antora and its extensions on every run
+      # Antora 3.2 needs Node 20 or later: keep <node-version> at 20+ (the catalog's CI uses 24)
+      - name: Set up Node <node-version> for the Antora toolchain
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge documentation
+        run: |
+          touch ./docs/build/site/.nojekyll
+          # docs-tool: typedoc or compodoc — merge the generated API reference under the Antora site
+          mkdir -p ./docs/build/site/api && cp -r ./docs/api/. ./docs/build/site/api/
+          # docs-tool: storybook — merged under a sibling path instead, since Storybook isn't an API reference
+          mkdir -p ./docs/build/site/storybook && cp -r ./storybook-static/. ./docs/build/site/storybook/
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into the site directory.
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk docs/build/site | cut -f1)
+      #     echo "site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      # pages: yes only (Step 1). With pages: no, replace this step with the "Upload docs artifact" step below
+      # and drop the whole deploy-docs job
+      - name: Upload Pages artifact
+        if: github.ref == format('refs/heads/{0}', '<stable-branch>') && github.event_name == 'push'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./docs/build/site
+
+      # pages: no only — the docs are still built (which validates them) and kept as a downloadable workflow
+      # artifact; nothing is published
+      - name: Upload docs artifact
+        if: github.ref == format('refs/heads/{0}', '<stable-branch>') && github.event_name == 'push'
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site
+          path: ./docs/build/site
+          retention-days: 30
+
+  # Omit this whole job if pages: no (Step 1) — together with its pages: write / id-token: write permissions,
+  # which only the deploy needs
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: build
+    if: github.ref == format('refs/heads/{0}', '<stable-branch>') && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

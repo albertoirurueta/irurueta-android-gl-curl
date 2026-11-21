@@ -1,0 +1,15 @@
+<script id="site-script" src="{{{uiRootPath}}}/js/site.js" data-ui-root-path="{{{uiRootPath}}}"></script>
+<script async src="{{{uiRootPath}}}/js/vendor/highlight.js"></script>
+{{#if env.SITE_SEARCH_PROVIDER}}
+{{> search-scripts}}
+{{/if}}
+{{!-- Pagefind search UI: deferred so it never blocks the page; initialised once the deferred script has run. --}}
+<script defer src="{{{siteRootPath}}}/pagefind/pagefind-ui.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    var el = document.getElementById('search')
+    if (!el || typeof PagefindUI === 'undefined') return
+    new PagefindUI({ element: '#search', showSubResults: true })
+    el.classList.add('is-ready')
+  })
+</script>

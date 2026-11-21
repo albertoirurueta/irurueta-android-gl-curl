@@ -1,0 +1,114 @@
+name: Develop
+
+on:
+  push:
+    branches: [ <integration-branch> ]
+
+jobs:
+  build:
+    name: Build and execute tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: adopt
+          java-version: <java-version>
+          cache: maven
+          # The four lines below (server-id / server-username / server-password / gpg-*) are only needed to
+          # authenticate and sign the "Deploy to maven central" step further down — omit all four here if
+          # publish: no (Step 1).
+          server-id: <publishing-server-id> # Value of the distributionManagement/repository/id field of the pom.xml
+          server-username: OSSRH_USERNAME # env variable for username in deploy
+          server-password: OSSRH_PASSWORD # env variable for token in deploy
+          gpg-private-key: ${{ secrets.SIGNING_KEY }} # Value of the GPG private key to import
+          gpg-passphrase: SIGNING_PASSWORD # env variable for GPG private key passphrase
+
+      # ci-tests: unit (Step 1) appends -DskipITs to the first command so Failsafe *IT tests are skipped and only
+      # Surefire *Test unit tests run; ci-tests: full leaves it off.
+      - name: Run tests
+        run: |
+          mvn clean jacoco:prepare-agent install jacoco:report javadoc:jar source:jar -P '!<extras-profile-id>'<skip-its>
+          mvn site -Djacoco.skip -DskipTests -P '!<extras-profile-id>'
+
+      # Omit this whole step if sonar: none (Step 1)
+      - name: Run SonarCloud analysis
+        env:
+          # to get access to secrets.SONAR_TOKEN, provide GITHUB_TOKEN
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn sonar:sonar -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge documentation
+        run: |
+          touch ./docs/build/site/.nojekyll
+          cp -r ./docs/build/site ./doc
+          cp -r ./target/site ./doc/mvn-site
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; it measures ./doc, the directory that
+      # is published (Antora site plus mvn-site), so keep it after "Merge documentation".
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk doc | cut -f1)
+      #     echo "doc is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      # pages: yes (Step 1) — publish ./doc to the gh-pages branch. If pages: no, replace this whole step with the
+      # "Upload documentation" step below.
+      - name: Deploy to GitHub Pages
+        if: success()
+        uses: crazy-max/ghaction-github-pages@v5
+        with:
+          target_branch: gh-pages
+          build_dir: ./doc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # pages: no (Step 1) only — use this instead of "Deploy to GitHub Pages": the docs are still built (so the
+      # build still validates them) but kept as a downloadable workflow artifact, not published.
+      - name: Upload documentation
+        if: success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: documentation
+          path: ./doc
+
+      # Omit this whole step if publish: no (Step 1)
+      - name: Deploy to maven central
+        env:
+          OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          SONATYPE_STAGING_PROFILE_ID: ${{ secrets.SONATYPE_STAGING_PROFILE_ID }}
+        run: mvn deploy -P <sign-profile-id>,<extras-profile-id> --settings <settings-file> -DskipTests

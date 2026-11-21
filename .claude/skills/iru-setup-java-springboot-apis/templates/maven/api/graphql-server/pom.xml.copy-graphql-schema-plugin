@@ -1,0 +1,25 @@
+<plugin>
+  <groupId>org.apache.maven.plugins</groupId>
+  <artifactId>maven-resources-plugin</artifactId>
+  <executions>
+    <execution>
+      <id>copy-graphql-schema</id>
+      <phase>generate-resources</phase>
+      <goals>
+        <goal>copy-resources</goal>
+      </goals>
+      <configuration>
+        <!-- classpath:graphql/ — matches spring.graphql.schema.locations' default. -->
+        <outputDirectory>${project.build.outputDirectory}/graphql</outputDirectory>
+        <resources>
+          <resource>
+            <directory>${maven.multiModuleProjectDirectory}/apis/graphql-server</directory>
+            <includes>
+              <include>*.graphqls</include>
+            </includes>
+          </resource>
+        </resources>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>

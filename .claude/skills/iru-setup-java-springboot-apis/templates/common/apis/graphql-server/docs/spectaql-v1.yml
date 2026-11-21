@@ -1,0 +1,14 @@
+spectaql:
+  targetDir: <replaced on the command line>
+  # One self-contained index.html, so publishing is a single file copy and the page
+  # works from any path on GitHub Pages.
+  oneFile: true
+introspection:
+  # The SDL is the input — no running server and no introspection endpoint needed,
+  # which is what makes this work in CI.
+  schemaFile: ../<service>-v1.graphqls
+info:
+  title: <Service> GraphQL API
+  description: The GraphQL interface exposed by this service.
+  version: "1.0.0"
+  x-url: <the deployed /graphql endpoint>

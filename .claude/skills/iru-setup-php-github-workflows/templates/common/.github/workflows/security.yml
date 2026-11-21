@@ -1,0 +1,109 @@
+name: Security
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ]
+  pull_request:
+    branches: [ <integration-branch>, <stable-branch> ]
+  schedule:
+    - cron: '0 6 * * 1'   # weekly: catch CVEs disclosed after the code was merged
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-review:
+    name: Dependency review
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Dependency review
+        uses: actions/dependency-review-action@v5
+
+  codeql:
+    name: CodeQL analysis (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ actions, javascript-typescript ]   # javascript-typescript only when the repository has JS/TS
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
+
+  # PHP code scanning: Psalm's taint analysis (XSS, SQL injection, SSRF, header/shell/file injection …), as SARIF.
+  psalm-taint:
+    name: Psalm taint analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up PHP <php-latest> with Psalm
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-latest>'
+          coverage: none
+          tools: composer:v2, psalm
+      # Psalm needs the autoloader to resolve the project's own classes and its dependencies.
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist --ignore-platform-req=php
+      # Exit code 2 = taint findings (reported through SARIF); anything else non-zero is a real failure.
+      - name: Run the taint analysis
+        run: |
+          mkdir -p build
+          psalm --config=.github/psalm/psalm-taint.xml --taint-analysis --no-cache --no-progress \
+            --report=build/psalm-taint.sarif || [ $? -eq 2 ]
+      - name: Upload results to code scanning
+        if: ${{ always() && hashFiles('build/psalm-taint.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: build/psalm-taint.sarif
+          category: psalm-taint
+
+  osv-scanner:
+    name: OSV-Scanner
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.7.0
+    with:
+      scan-args: |-
+        --recursive
+        ./
+
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0                   # scan the history, not just the tree
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

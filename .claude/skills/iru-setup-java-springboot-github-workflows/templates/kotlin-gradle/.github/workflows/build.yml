@@ -1,0 +1,247 @@
+name: Build
+
+on:
+  push:
+    branches: [ <integration-branch>, <main-branch> ]
+  pull_request:
+    branches: [ <integration-branch>, <main-branch> ]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and analyse
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          # Sonar needs full history to attribute issues to blame data.
+          fetch-depth: 0
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+
+      - name: Set up Gradle
+        # Caches the Gradle User Home (dependencies, wrapper distribution) and validates the committed wrapper
+        # jar's checksum. cache-provider: basic is the MIT-licensed actions/cache-backed provider; the v6 default
+        # ("enhanced") is a proprietary component governed by the Gradle Technologies Terms of Use (free for public
+        # repositories, a free preview for private ones). Switching to it is the repository owner's call, not
+        # something to accept silently on their behalf.
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      # Only when the manifest's frontend: hilla — same reasoning and ordering as the Maven template: the Vaadin
+      # Gradle plugin's vaadinPrepareFrontend/vaadinBuildFrontend tasks need Node on PATH.
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: <web-module>/package-lock.json
+
+      - name: Build and unit tests
+        # `test` excludes **/*IT* (iru.integration-test convention), so nothing here needs Docker.
+        # -Pvaadin.productionMode=true -Pvaadin.ci.build=true only when frontend: hilla — the Gradle plugin reads
+        # both as Gradle properties (vaadin.ci.build makes it run `npm ci`, never rewriting the lock file).
+        # Pass the same two flags to every later ./gradlew call in this job too, or Gradle sees different
+        # inputs and re-runs the frontend tasks in development mode. vaadinPrepareFrontend is named explicitly
+        # because a plain `build` doesn't depend on it — the frontend unit-test step below needs its output.
+        # Without frontend: hilla the command is just `./gradlew build -x integrationTest`.
+        run: ./gradlew :boot:vaadinPrepareFrontend build -x integrationTest -Pvaadin.productionMode=true -Pvaadin.ci.build=true
+
+      - name: Integration tests
+        # ci.tests: full only. *IT classes start the Testcontainers/compose stack; Docker is available on
+        # ubuntu-latest runners.
+        run: ./gradlew integrationTest
+
+      - name: Aggregated coverage report
+        # jacoco-report-aggregation in the coverage project: one XML over every module's test (and, with
+        # ci.tests: full, integrationTest) execution data — the file Sonar reads.
+        run: ./gradlew :coverage:testCodeCoverageReport
+
+      # Only when the manifest's frontend: hilla, and after the Gradle build for the same vite.generated.ts reason
+      # as the Maven template (its helpers live under <web-module>/build/ once vaadinPrepareFrontend has run).
+      - name: Frontend unit tests and coverage
+        working-directory: <web-module>
+        run: |
+          npm ci
+          npx vitest run --coverage
+
+      # Only when frontend: hilla, ci.tests: full, and the web module has a playwright.config.ts (written by
+      # iru-setup-java-springboot-hilla). Runs the Playwright component tests against the standalone Vite gallery
+      # in the same job (no extra runner); captures land in .ui-screenshots/ per the catalog's UI contract.
+      - name: Frontend UI tests
+        working-directory: <web-module>
+        env:
+          CI: "true"
+          UI_SCREENSHOTS_DIR: ${{ github.workspace }}/.ui-screenshots
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Static analysis (detekt + ktlint)
+        # Already part of `check` (hence of `build` above); run explicitly with --continue so one tool's failure
+        # still yields the other's report, and so the reports exist before the Sonar step reads them.
+        run: ./gradlew detekt ktlintCheck --continue
+
+      - name: Run SonarCloud analysis
+        # Only present when sonar.mode isn't `none`. The org.sonarqube plugin's `sonar` task reads SONAR_TOKEN
+        # from the environment. Skipped on pull requests from forks, where SONAR_TOKEN is not available.
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./gradlew sonar
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            **/build/test-results/**
+            **/build/reports/tests/**
+            **/build/reports/detekt/**
+            **/build/reports/ktlint/**
+            coverage/build/reports/jacoco/testCodeCoverageReport/**
+            <web-module>/coverage/**
+          retention-days: 7
+
+  docs:
+    name: Build and publish documentation
+    needs: build
+    if: github.ref == 'refs/heads/<main-branch>' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Install Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            docs/package-lock.json
+            apis/messaging/docs/package-lock.json
+            apis/graphql-server/docs/package-lock.json
+
+      - name: Generate KDoc and API documentation
+        # dokkaGeneratePublicationHtml is Dokka 2's HTML task; <api-doc-tasks> are the non-npm API documentation
+        # tasks the survey found (OpenAPI html2, protoc-gen-doc) — they write <module>/build/generated-docs/.
+        run: ./gradlew dokkaGeneratePublicationHtml <api-doc-tasks>
+
+      - name: Generate AsyncAPI documentation
+        if: hashFiles('apis/messaging/docs/package.json') != ''
+        working-directory: apis/messaging/docs
+        env:
+          ASYNCAPI_METRICS_CONFIG_PATH: .asyncapi-analytics
+        run: |
+          npm ci --no-audit --no-fund
+          out="$GITHUB_WORKSPACE/build/generated-docs/messaging"
+          for spec in ../*-async-api-v*.yaml; do
+            v="$(basename "$spec" .yaml | sed -e 's/.*-async-api-//')"
+            npx asyncapi validate "$spec"
+            npx asyncapi generate fromTemplate "$spec" @asyncapi/html-template \
+              -o "$out/$v" --force-write -p singleFile=true
+          done
+
+      - name: Generate GraphQL documentation
+        if: hashFiles('apis/graphql-server/docs/package.json') != ''
+        working-directory: apis/graphql-server/docs
+        run: |
+          npm ci --no-audit --no-fund
+          out="$GITHUB_WORKSPACE/build/generated-docs/graphql-server"
+          for sdl in ../*-v*.graphqls; do
+            v="$(basename "$sdl" .graphqls | sed -e 's/.*-\(v[0-9]*\)$/\1/')"
+            npx spectaql "spectaql-$v.yml" --target-dir "$out/$v"
+            node build-voyager.mjs "$sdl" "$out/$v/voyager" "GraphQL schema $v"
+          done
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge documentation
+        run: |
+          touch ./docs/build/site/.nojekyll
+          cp -r ./docs/build/site ./doc
+          mkdir -p ./doc/api/kdoc
+          # Dokka: the root-aggregated site when the root project aggregates, otherwise one site per module
+          # under doc/api/kdoc/<module-path>/.
+          if [ -f ./build/dokka/html/index.html ]; then
+            cp -r ./build/dokka/html/. ./doc/api/kdoc/
+          else
+            while IFS= read -r dir; do
+              module="$(dirname "$(dirname "$(dirname "$dir")")")"; module="${module#./}"
+              mkdir -p "./doc/api/kdoc/$module" && cp -r "$dir"/. "./doc/api/kdoc/$module/"
+            done < <(find . -type d -path '*/build/dokka/html' -not -path './node_modules/*' -not -path './build-logic/*')
+          fi
+          # Generated API documentation — same merge as the Maven template, from build/ instead of target/.
+          while IFS= read -r root; do
+            cp -r "$root"/. ./doc/api/
+          done < <(find . -type d -path '*/build/generated-docs' -not -path './node_modules/*')
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into the site directory.
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk doc | cut -f1)
+      #     echo "site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      - name: Deploy to GitHub Pages
+        if: success()
+        uses: crazy-max/ghaction-github-pages@v5
+        with:
+          target_branch: gh-pages
+          build_dir: ./doc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

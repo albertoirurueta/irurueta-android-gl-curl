@@ -44,8 +44,8 @@ The page curl implementation is based on [harism/android-pagecurl](https://githu
 | --- | --- |
 | Language | Kotlin (Java 17 bytecode) |
 | Build tool | Gradle (Kotlin DSL) |
-| Current development version | 1.1.7-SNAPSHOT |
-| Latest release | 1.1.6 |
+| Current development version | 1.2.0-SNAPSHOT |
+| Latest release | 1.1.7 |
 | Platform | Android |
 | Min / compile SDK | minSdk 26, compileSdk 36 |
 | Kotlin / AGP | Kotlin 2.3.10, AGP 9.0.1 |
@@ -67,13 +67,13 @@ The library is published on Maven Central. Add the dependency to your module's b
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.irurueta:irurueta-android-gl-curl:1.1.6'
+implementation 'com.irurueta:irurueta-android-gl-curl:1.1.7'
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.irurueta:irurueta-android-gl-curl:1.1.6")
+implementation("com.irurueta:irurueta-android-gl-curl:1.1.7")
 ```
 
 ## Usage

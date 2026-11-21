@@ -1,0 +1,41 @@
+       strategy:
+         fail-fast: false
+         matrix:
+           include:
+             - language: java-kotlin
+               build-mode: manual
+             # frontend: hilla only
+             - language: javascript-typescript
+               build-mode: none
+       steps:
+         - name: Check out code
+           uses: actions/checkout@v7
+         - name: Set up JDK <java-version>
+           if: matrix.build-mode == 'manual'
+           uses: actions/setup-java@v6
+           with:
+             distribution: temurin
+             java-version: <java-version>
+         - name: Set up Gradle
+           if: matrix.build-mode == 'manual'
+           uses: gradle/actions/setup-gradle@v6
+           with:
+             cache-provider: basic
+         - name: Initialize CodeQL
+           uses: github/codeql-action/init@v4
+           with:
+             languages: ${{ matrix.language }}
+             build-mode: ${{ matrix.build-mode }}
+         - name: Compile for CodeQL
+           if: matrix.build-mode == 'manual'
+           # CodeQL only sees what is actually compiled while it traces the build: `clean` + --no-build-cache stop
+           # Gradle restoring classes from a cache, --no-daemon keeps the compiler inside the traced process tree,
+           # and the in-process Kotlin strategy keeps kotlinc out of the separate Kotlin daemon. No tests, no
+           # detekt/ktlint — compilation (main + test sources, including codegen) is all CodeQL needs.
+           run: >-
+             ./gradlew --no-daemon --no-build-cache clean assemble testClasses
+             -Pkotlin.compiler.execution.strategy=in-process
+         - name: Perform CodeQL analysis
+           uses: github/codeql-action/analyze@v4
+           with:
+             category: /language:${{ matrix.language }}

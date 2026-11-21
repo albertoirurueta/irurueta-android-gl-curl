@@ -1,0 +1,497 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version><spring-boot-version></version>
+    <relativePath/>
+  </parent>
+
+  <groupId><group-id></groupId>
+  <artifactId><artifact-id>-parent</artifactId>
+  <version><version></version>
+  <packaging>pom</packaging>
+
+  <name>${project.groupId}:${project.artifactId}</name>
+  <description><description></description>
+  <url>https://<host>/<owner>/<repo></url>
+  <inceptionYear><inception-year></inceptionYear>
+
+  <developers>
+    <developer>
+      <name><developer-name></name>
+      <email><developer-email></email>
+      <organizationUrl><organization-url></organizationUrl>
+    </developer>
+  </developers>
+  <scm>
+    <connection>scm:git@<host>:<owner>/<repo>.git</connection>
+    <developerConnection>scm:git@<host>:<owner>/<repo>.git</developerConnection>
+    <url>git@<host>:<owner>/<repo>.git</url>
+  </scm>
+
+  <modules>
+    <module>domain</module>
+    <module>application</module>
+    <module>infrastructure</module>
+    <module>api</module>
+    <module>boot</module>
+    <module>coverage</module>
+  </modules>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Java 21 is this catalog's enforced minimum; all three must agree. -->
+    <java.version><java-version></java.version>
+    <maven.compiler.release><java-version></maven.compiler.release>
+    <maven.compiler.source><java-version></maven.compiler.source>
+    <maven.compiler.target><java-version></maven.compiler.target>
+
+    <!-- BOM versions copied verbatim from the Initializr reference pom; omit any not present there. -->
+    <spring-cloud.version><from-reference-pom></spring-cloud.version>
+    <spring-ai.version><from-reference-pom></spring-ai.version>
+
+    <!-- Dependencies with no Initializr id and no Boot-managed version. Omit any the stack doesn't use. -->
+    <mapstruct.version><latest></mapstruct.version>
+    <lombok-mapstruct-binding.version><latest></lombok-mapstruct-binding.version>
+    <caffeine.version><latest></caffeine.version>
+    <flamingock.version><latest></flamingock.version>
+    <liquibase-mongodb.version><latest></liquibase-mongodb.version>
+    <liquibase-couchbase.version><latest></liquibase-couchbase.version>
+    <liquibase-neo4j.version><latest></liquibase-neo4j.version>
+    <spring-cloud-aws.version><latest></spring-cloud-aws.version>
+    <archunit.version><latest></archunit.version>
+
+    <!-- Plugin versions. Pinned explicitly for reproducible builds even where the Boot parent also manages
+         them — that override is deliberate and shared with the rest of this catalog's Java skills. -->
+    <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
+    <maven-surefire-plugin.version>3.5.4</maven-surefire-plugin.version>
+    <maven-failsafe-plugin.version>3.5.4</maven-failsafe-plugin.version>
+    <maven-javadoc-plugin.version>3.11.3</maven-javadoc-plugin.version>
+    <maven-checkstyle-plugin.version>3.6.0</maven-checkstyle-plugin.version>
+    <maven-pmd-plugin.version>3.27.0</maven-pmd-plugin.version>
+    <spotbugs-maven-plugin.version>4.9.6.0</spotbugs-maven-plugin.version>
+    <jacoco-maven-plugin.version>0.8.13</jacoco-maven-plugin.version>
+    <maven-jxr-plugin.version>3.6.0</maven-jxr-plugin.version>
+    <maven-site-plugin.version>3.21.0</maven-site-plugin.version>
+    <groovy-maven-plugin.version>2.1.1</groovy-maven-plugin.version>
+    <sonar-maven-plugin.version><latest></sonar-maven-plugin.version>
+    <openapi-generator-maven-plugin.version><latest></openapi-generator-maven-plugin.version>
+    <protobuf-maven-plugin.version><from-reference-pom-or-latest></protobuf-maven-plugin.version>
+    <avro-maven-plugin.version><latest></avro-maven-plugin.version>
+    <!-- GraphQL SDL -> Java. The same version is ALSO used for the io.github.kobylynskyi:graphql-java-codegen
+         runtime dependency that generated GraphQL *client* code extends; keep the two in lockstep. -->
+    <graphql-codegen-maven-plugin.version><latest></graphql-codegen-maven-plugin.version>
+    <!-- Runs the AsyncAPI documentation generators (npm-based) from the Maven build; see
+         iru-setup-java-springboot-apis. Needed when messaging and/or a GraphQL server is enabled. -->
+    <frontend-maven-plugin.version><latest></frontend-maven-plugin.version>
+    <!-- Escape hatches for the two npm-driven documentation steps, so an offline build can opt out.
+         CI must leave both false or the published documentation silently goes stale. -->
+    <asyncapi.docs.skip>false</asyncapi.docs.skip>
+    <graphql.docs.skip>false</graphql.docs.skip>
+
+    <!-- Only when the manifest's frontend: hilla. vaadin.version pins both the vaadin-bom import below and the
+         vaadin-maven-plugin pluginManagement entry, so the module (wired by iru-setup-java-springboot-hilla) and
+         the root always agree on one version. vaadin.skip is the plugin's own documented escape hatch
+         (verified: the plugin's own metadata declares `<skip>` bound to `${vaadin.skip}`, default false) so an
+         analysis-only or offline build can pass -Dvaadin.skip=true and get a real compile without Node/npm. -->
+    <vaadin.version><latest-release-from-maven-metadata></vaadin.version>
+    <vaadin.skip>false</vaadin.skip>
+
+    <!-- Analysis and coverage settings. The whole sonar.* block below is omitted, property for property,
+         when the manifest's `sonar.mode: none` — a service with no Sonar wiring has no use for any of them,
+         not just the identity properties. sonar.organization is normally omitted for `self-hosted` too, unless
+         that server has organizations enabled — see the note after this template. -->
+    <sonar.organization><sonar-organization></sonar.organization>
+    <sonar.projectKey><owner>_<repo></sonar.projectKey>
+    <sonar.host.url><sonar-host-url></sonar.host.url> <!-- https://sonarcloud.io for mode: cloud; manifest's sonar.hostUrl for mode: self-hosted -->
+    <sonar.coverage.jacoco.xmlReportPaths>${maven.multiModuleProjectDirectory}/coverage/target/site/jacoco-aggregate/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+    <!-- Generated sources are never the developer's code; keep them out of coverage and duplication metrics. -->
+    <sonar.exclusions>**/generated-sources/**,**/generated/**</sonar.exclusions>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- This project's own modules, so module poms never repeat ${project.version}. -->
+      <dependency>
+        <groupId>${project.groupId}</groupId>
+        <artifactId><artifact-id>-domain</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <!-- ... one entry per module in the manifest's `modules:` list, same shape ... -->
+
+      <!-- BOM imports copied from the Initializr reference pom (Spring Cloud, Spring AI, ...). -->
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- Only when the manifest's frontend: hilla. Not from the Initializr reference pom — Initializr's own
+           "vaadin" dependency id resolves to a Flow-oriented starter combination, not this catalog's Hilla
+           wiring, so this BOM import is added independently, version from Maven Central's vaadin-bom
+           maven-metadata.xml (see the <vaadin.version> note above). -->
+      <dependency>
+        <groupId>com.vaadin</groupId>
+        <artifactId>vaadin-bom</artifactId>
+        <version>${vaadin.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+
+      <!-- Non-Initializr dependencies. Include only what the stack uses. -->
+      <dependency>
+        <groupId>org.mapstruct</groupId>
+        <artifactId>mapstruct</artifactId>
+        <version>${mapstruct.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.github.ben-manes.caffeine</groupId>
+        <artifactId>caffeine</artifactId>
+        <version>${caffeine.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.tngtech.archunit</groupId>
+        <artifactId>archunit-junit5</artifactId>
+        <version>${archunit.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <!-- ... the Flamingock BOM, the Liquibase extensions, and the AWS BOM as the stack requires ... -->
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Project-wide: every module gets these. Nothing Spring-specific belongs here — `domain` inherits it too. -->
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.mapstruct</groupId>
+      <artifactId>mapstruct</artifactId>
+    </dependency>
+    <!-- Test dependencies every module needs; artifact names taken from the reference pom. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.openapitools</groupId>
+          <artifactId>openapi-generator-maven-plugin</artifactId>
+          <version>${openapi-generator-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId><protobuf-plugin-group-from-reference-pom></groupId>
+          <artifactId>protobuf-maven-plugin</artifactId>
+          <version>${protobuf-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.avro</groupId>
+          <artifactId>avro-maven-plugin</artifactId>
+          <version>${avro-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>io.github.kobylynskyi</groupId>
+          <artifactId>graphql-codegen-maven-plugin</artifactId>
+          <version>${graphql-codegen-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>com.github.eirslett</groupId>
+          <artifactId>frontend-maven-plugin</artifactId>
+          <version>${frontend-maven-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+        <!-- Only when the manifest's frontend: hilla. The execution itself (which goals run, in which module)
+             is wired by iru-setup-java-springboot-hilla into the boot module's pom — this pluginManagement
+             entry only pins the version every such execution inherits. -->
+        <plugin>
+          <groupId>com.vaadin</groupId>
+          <artifactId>vaadin-maven-plugin</artifactId>
+          <version>${vaadin.version}</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <!-- Java 21 minimum, enforced at build time and not just declared in a property -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven-enforcer-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-java</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[<java-version>,)</version>
+                  <message>This project requires Java <java-version> or newer.</message>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>[3.9.0,)</version>
+                </requireMavenVersion>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Lombok and MapStruct annotation processors. lombok-mapstruct-binding is required for the two to
+           coexist: without it MapStruct runs before Lombok has generated getters and produces empty mappers.
+           Order matters — lombok, then the binding, then mapstruct-processor. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <release>${maven.compiler.release}</release>
+          <parameters>true</parameters>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>${lombok.version}</version>
+            </path>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok-mapstruct-binding</artifactId>
+              <version>${lombok-mapstruct-binding.version}</version>
+            </path>
+            <path>
+              <groupId>org.mapstruct</groupId>
+              <artifactId>mapstruct-processor</artifactId>
+              <version>${mapstruct.version}</version>
+            </path>
+            <path>
+              <groupId>org.springframework.boot</groupId>
+              <artifactId>spring-boot-configuration-processor</artifactId>
+              <version>${spring-boot.version}</version>
+            </path>
+          </annotationProcessorPaths>
+          <compilerArgs>
+            <arg>-Amapstruct.defaultComponentModel=spring</arg>
+            <arg>-Amapstruct.unmappedTargetPolicy=ERROR</arg>
+          </compilerArgs>
+        </configuration>
+      </plugin>
+
+      <!-- Unit tests: *Test. Integration tests are Failsafe's, below, and never run here. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>${maven-surefire-plugin.version}</version>
+        <configuration>
+          <includes>
+            <include>**/*Test.java</include>
+          </includes>
+          <excludes>
+            <exclude>**/*IT.java</exclude>
+          </excludes>
+        </configuration>
+      </plugin>
+
+      <!-- Integration tests: *IT, bound to verify. These are the Testcontainers-backed ones. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>${maven-failsafe-plugin.version}</version>
+        <configuration>
+          <includes>
+            <include>**/*IT.java</include>
+          </includes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>integration-tests</id>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Coverage. Generated sources are excluded so codegen output can't inflate or deflate the number. -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco-maven-plugin.version}</version>
+        <configuration>
+          <excludes>
+            <exclude><base-package-path>/**/generated/**</exclude>
+            <exclude>**/*MapperImpl.class</exclude>
+            <exclude>**/*Application.class</exclude>
+          </excludes>
+        </configuration>
+        <executions>
+          <execution>
+            <id>jacoco-initialize</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>jacoco-initialize-it</id>
+            <goals>
+              <goal>prepare-agent-integration</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>jacoco-report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+              <goal>report-integration</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Static analysis. All three analyse hand-written sources only. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>${maven-checkstyle-plugin.version}</version>
+        <configuration>
+          <configLocation>${checkstyle.config.location}</configLocation>
+          <sourceDirectories>
+            <sourceDirectory>${project.build.sourceDirectory}</sourceDirectory>
+          </sourceDirectories>
+          <includeTestSourceDirectory>true</includeTestSourceDirectory>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-pmd-plugin</artifactId>
+        <version>${maven-pmd-plugin.version}</version>
+        <configuration>
+          <targetJdk>${maven.compiler.release}</targetJdk>
+          <excludeRoots>
+            <excludeRoot>${project.build.directory}/generated-sources</excludeRoot>
+          </excludeRoots>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>${spotbugs-maven-plugin.version}</version>
+        <configuration>
+          <excludeFilterFile>${maven.multiModuleProjectDirectory}/spotbugs-exclude.xml</excludeFilterFile>
+        </configuration>
+      </plugin>
+
+      <!-- Maven site, the report aggregator -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-site-plugin</artifactId>
+        <version>${maven-site-plugin.version}</version>
+      </plugin>
+
+      <!-- SonarCloud/SonarQube; omit this whole plugin entry when manifest `sonar.mode: none` -->
+      <plugin>
+        <groupId>org.sonarsource.scanner.maven</groupId>
+        <artifactId>sonar-maven-plugin</artifactId>
+        <version>${sonar-maven-plugin.version}</version>
+      </plugin>
+    </plugins>
+  </build>
+
+  <reporting>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-javadoc-plugin</artifactId>
+        <version>${maven-javadoc-plugin.version}</version>
+        <configuration>
+          <show>private</show>
+          <nohelp>true</nohelp>
+          <detectJavaApiLink>true</detectJavaApiLink>
+          <doclint>none</doclint>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-report-plugin</artifactId>
+        <version>${maven-surefire-plugin.version}</version>
+        <reportSets>
+          <reportSet>
+            <reports>
+              <report>report</report>
+              <report>failsafe-report-only</report>
+            </reports>
+          </reportSet>
+        </reportSets>
+      </plugin>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>${jacoco-maven-plugin.version}</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>${maven-checkstyle-plugin.version}</version>
+        <configuration>
+          <configLocation>${checkstyle.config.location}</configLocation>
+        </configuration>
+        <reportSets>
+          <reportSet>
+            <reports>
+              <report>checkstyle</report>
+            </reports>
+          </reportSet>
+        </reportSets>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-pmd-plugin</artifactId>
+        <version>${maven-pmd-plugin.version}</version>
+      </plugin>
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>${spotbugs-maven-plugin.version}</version>
+      </plugin>
+      <!-- Cross-referenced source, so every report above can link straight to the offending line -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jxr-plugin</artifactId>
+        <version>${maven-jxr-plugin.version}</version>
+      </plugin>
+    </plugins>
+  </reporting>
+
+  <!-- Only when the manifest's frontend: hilla. `mvn package -Pproduction` builds the real Vite production
+       bundle instead of leaving the frontend in dev-bundle mode; without it a packaged jar still works (Vaadin
+       serves the dev bundle) but is not what should ship. See the profile note below the template. -->
+  <profiles>
+    <profile>
+      <id>production</id>
+      <properties>
+        <vaadin.productionMode>true</vaadin.productionMode>
+      </properties>
+    </profile>
+  </profiles>
+</project>

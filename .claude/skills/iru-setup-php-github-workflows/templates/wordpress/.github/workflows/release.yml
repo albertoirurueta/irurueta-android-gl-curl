@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  release:
+    types: [ released ]
+
+permissions:
+  contents: write                          # gh release upload
+
+jobs:
+  package:
+    name: Build the installable zip
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v7
+
+      # The release must carry its own version everywhere: header, constant, Stable tag (and package.json).
+      - name: Check the version matches the tag
+        run: |
+          VERSION="${TAG#v}"
+          python3 .github/scripts/php_version.py --list | grep -E '^[^ ]+:[0-9]+: ' > "$RUNNER_TEMP/versions.txt"
+          cat "$RUNNER_TEMP/versions.txt"
+          if grep -v -F ": $VERSION " "$RUNNER_TEMP/versions.txt"; then
+            echo "::error::Some version locations don't match the release tag $VERSION (iru-php-bump-version $VERSION fixes them)."
+            exit 1
+          fi
+
+      - name: Set up PHP <php-floor>
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-floor>'
+          coverage: none
+          tools: composer:v2
+
+      # wordpress-plugin — the plugin ships its production vendor/ (.distignore keeps it).
+      - name: Install production dependencies
+        run: composer install --no-dev --classmap-authoritative --no-interaction --no-progress --prefer-dist
+
+      # Only when package.json has a "build" script (@wordpress/scripts blocks/assets).
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build assets
+        run: |
+          npm ci
+          npm run build
+
+      # The zip unpacks to <slug>/ as WordPress expects, without anything .distignore lists.
+      - name: Assemble the zip
+        run: |
+          mkdir -p "$RUNNER_TEMP/dist/<slug>"
+          rsync -a --exclude-from=.distignore ./ "$RUNNER_TEMP/dist/<slug>/"
+          (cd "$RUNNER_TEMP/dist" && zip -qr -X "$RUNNER_TEMP/<slug>.zip" <slug>)
+
+      - name: Attach the zip to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" "$RUNNER_TEMP/<slug>.zip" --clobber
+
+      # store only — hands the assembled files to the deploy job.
+      - name: Keep the build for the WordPress.org deploy
+        uses: actions/upload-artifact@v7
+        with:
+          name: wordpress-org-build
+          path: ${{ runner.temp }}/dist/<slug>
+          retention-days: 1
+
+  # store + wordpress-plugin only. The slug must already be approved on WordPress.org.
+  deploy-plugin:
+    name: Deploy to the WordPress.org Plugin Directory
+    needs: package
+    runs-on: ubuntu-latest
+    environment: wordpress-org             # optional: add required reviewers to this environment
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v7          # .wordpress-org/ (banners, icons, screenshots) comes from the repository
+      - name: Download the build
+        uses: actions/download-artifact@v8
+        with:
+          name: wordpress-org-build
+          path: ${{ runner.temp }}/wordpress-org-build
+      - name: Commit trunk and the tag to the plugin's SVN
+        uses: 10up/action-wordpress-plugin-deploy@2.3.0
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          SLUG: <slug>
+          VERSION: ${{ github.event.release.tag_name }}
+          BUILD_DIR: ${{ runner.temp }}/wordpress-org-build
+
+  # store + wordpress-theme only. Themes are added through the upload form once; updates are new
+  # /<slug>/<version>/ directories committed to themes.svn.wordpress.org, each reviewed before it goes live.
+  deploy-theme:
+    name: Deploy to the WordPress.org Theme Directory
+    needs: package
+    runs-on: ubuntu-latest
+    environment: wordpress-org
+    permissions:
+      contents: read
+    steps:
+      - name: Download the build
+        uses: actions/download-artifact@v8
+        with:
+          name: wordpress-org-build
+          path: ${{ runner.temp }}/theme
+      - name: Commit the new version to the theme's SVN
+        env:
+          SVN_USERNAME: ${{ secrets.SVN_USERNAME }}
+          SVN_PASSWORD: ${{ secrets.SVN_PASSWORD }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION="${TAG#v}"
+          command -v svn >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q subversion; }
+          svn checkout --depth immediates "https://themes.svn.wordpress.org/<slug>" "$RUNNER_TEMP/svn"
+          if [ -e "$RUNNER_TEMP/svn/$VERSION" ]; then
+            echo "::error::Version $VERSION already exists in the Theme Directory; versions are immutable there."
+            exit 1
+          fi
+          cp -R "$RUNNER_TEMP/theme" "$RUNNER_TEMP/svn/$VERSION"
+          cd "$RUNNER_TEMP/svn"
+          svn add --quiet "$VERSION"
+          svn commit -m "Release $VERSION" --username "$SVN_USERNAME" --password "$SVN_PASSWORD" \
+            --non-interactive --no-auth-cache

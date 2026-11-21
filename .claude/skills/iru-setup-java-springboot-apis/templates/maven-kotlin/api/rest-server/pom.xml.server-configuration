@@ -1,0 +1,29 @@
+<configuration>
+  <inputSpec>${maven.multiModuleProjectDirectory}/apis/rest-server/<service>-api-v1.yaml</inputSpec>
+  <generatorName>kotlin-spring</generatorName>
+  <output>${project.build.directory}/generated-sources/openapi-rest-server-v1</output>
+  <apiPackage><base>.api.rest.v1.generated.api</apiPackage>
+  <modelPackage><base>.api.rest.v1.generated.model</modelPackage>
+  <!-- No pom/README/Application.kt: the module already has a build and a boot module. -->
+  <generateSupportingFiles>false</generateSupportingFiles>
+  <configOptions>
+    <sourceFolder>src/main/kotlin</sourceFolder>
+    <interfaceOnly>true</interfaceOnly>
+    <useSpringBoot4>true</useSpringBoot4>         <!-- Spring 7 + Jakarta -->
+    <useJackson3>true</useJackson3>               <!-- tools.jackson; Boot 4 ships Jackson 3 -->
+    <useTags>true</useTags>
+    <useBeanValidation>true</useBeanValidation>
+    <documentationProvider>none</documentationProvider>
+    <annotationLibrary>none</annotationLibrary>   <!-- no swagger-annotations dependency -->
+    <exceptionHandler>false</exceptionHandler>    <!-- the hand-written @RestControllerAdvice owns errors -->
+    <gradleBuildFile>false</gradleBuildFile>
+    <!-- reactive=true emits `suspend fun` and Flow<T> (not Mono/Flux). Set from stack.concurrency. -->
+    <reactive><true-if-reactive></reactive>
+    <serializableModel>true</serializableModel>
+    <!-- Abstract interface methods: a forgotten override is a compile error, not a 501 at runtime. -->
+    <skipDefaultInterface>true</skipDefaultInterface>
+    <!-- Explicit, or 7.24+ logs a warning on every build (7.26 adds the second one). -->
+    <generateJsonIncludeAnnotations>false</generateJsonIncludeAnnotations>
+    <generateJsonSetterNullsAnnotations>false</generateJsonSetterNullsAnnotations>
+  </configOptions>
+</configuration>

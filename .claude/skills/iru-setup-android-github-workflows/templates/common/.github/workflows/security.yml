@@ -1,0 +1,123 @@
+name: Security
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ] # gitflow; main-only: just [ <stable-branch> ]
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  # Omit this whole job if security-dependency-review: no (Step 0)
+  dependency-review:
+    name: Dependency review
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Dependency review
+        uses: actions/dependency-review-action@v5.0.0
+
+  # Omit this whole job if security-codeql: no (Step 0)
+  codeql:
+    name: CodeQL analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '<java-version>'
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          build-mode: autobuild
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+
+  # Omit this whole job if security-osv: no (Step 0)
+  osv-scanner:
+    name: OSV-Scanner
+    permissions:
+      contents: read
+      security-events: write
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.7.0
+    with:
+      scan-args: |-
+        --recursive
+        ./
+
+  # Omit this whole job if security-gitleaks: no (Step 0)
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Opt-in — only when security-owasp-dependency-check: yes (default no). Unverified locally: the exact
+  # action id/version below was not exercised during this skill's own verification pass; confirm it
+  # still resolves before relying on it.
+  owasp-dependency-check:
+    name: OWASP Dependency-Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Run OWASP Dependency-Check
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: <artifact-id>
+          path: .
+          format: SARIF
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+      - name: Upload Dependency-Check SARIF results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/dependency-check-report.sarif
+
+  # Opt-in, app flavor only — only when security-mobsfscan: yes (default no). Unverified locally.
+  mobsfscan:
+    name: MobSF mobsfscan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+      - name: Install mobsfscan
+        run: pip install mobsfscan
+      - name: Run mobsfscan
+        run: mobsfscan --sarif --output mobsfscan-results.sarif <app-module>/ || true
+      - name: Upload mobsfscan SARIF results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: mobsfscan-results.sarif

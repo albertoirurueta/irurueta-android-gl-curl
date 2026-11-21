@@ -1,0 +1,13 @@
+name: Release
+
+on:
+  release:
+    # Runs this workflow when a new GitHub release is created
+    types: [released]
+
+jobs:
+  build:
+    name: Build and execute tests
+    runs-on: ubuntu-latest
+    steps:
+      # ... identical to every step under develop.yml's `build` job above, verbatim ...

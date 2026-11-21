@@ -1,0 +1,22 @@
+{
+  "name": "irurueta-android-gl-curl-docs",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "antora antora-playbook.yml",
+    "search:index": "pagefind --site build/site",
+    "test:nav": "node --test \"scripts/nav-fix/*.test.mjs\" \"scripts/site-metrics/*.test.mjs\" \"scripts/mermaid/*.test.mjs\"",
+    "test:nav:site": "node scripts/nav-fix/check-nav-dead-ends.mjs build/site",
+    "validate:mermaid": "node scripts/mermaid/validate-mermaid.mjs modules --render"
+  },
+  "type": "commonjs",
+  "dependencies": {
+    "@djencks/asciidoctor-mathjax": "0.0.9",
+    "@sntke/antora-mermaid-extension": "0.0.13",
+    "antora": "3.2.2",
+    "pagefind": "1.6.0"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,25 @@
+<configuration>
+  <inputSpec>${maven.multiModuleProjectDirectory}/apis/rest-client/<name>/<name>-api.yaml</inputSpec>
+  <generatorName>kotlin-spring</generatorName>
+  <library>spring-declarative-http-interface</library>
+  <output>${project.build.directory}/generated-sources/openapi-client-<name></output>
+  <apiPackage><base>.infrastructure.clients.<name>.generated.api</apiPackage>
+  <modelPackage><base>.infrastructure.clients.<name>.generated.model</modelPackage>
+  <generateSupportingFiles>false</generateSupportingFiles>
+  <configOptions>
+    <sourceFolder>src/main/kotlin</sourceFolder>
+    <useSpringBoot4>true</useSpringBoot4>
+    <useJackson3>true</useJackson3>
+    <reactive>true</reactive>
+    <declarativeInterfaceReactiveMode>coroutines</declarativeInterfaceReactiveMode>
+    <!-- Required by this library: generation fails otherwise. -->
+    <useFlowForArrayReturnType>false</useFlowForArrayReturnType>
+    <useBeanValidation>false</useBeanValidation>
+    <documentationProvider>none</documentationProvider>
+    <annotationLibrary>none</annotationLibrary>
+    <gradleBuildFile>false</gradleBuildFile>
+    <serializableModel>true</serializableModel>
+    <useTags>true</useTags>
+    <generateJsonIncludeAnnotations>false</generateJsonIncludeAnnotations>
+  </configOptions>
+</configuration>

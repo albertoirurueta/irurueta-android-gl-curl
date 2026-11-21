@@ -1,0 +1,69 @@
+  integration:
+    name: Integration tests (MySQL)
+    needs: tests
+    runs-on: ubuntu-latest
+    services:
+      database:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_DATABASE: testing
+        ports: [ '3306:3306' ]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ppassword"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      # pgsql instead of the mysql service above:
+      # database:
+      #   image: postgres:18
+      #   env: { POSTGRES_PASSWORD: password, POSTGRES_DB: testing }
+      #   ports: [ '5432:5432' ]
+      #   options: --health-cmd=pg_isready --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306              # pgsql: 5432
+      DB_USERNAME: root          # pgsql: postgres
+      DB_PASSWORD: password
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up PHP <php-floor>
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-floor>'
+          coverage: none
+          extensions: pdo_mysql    # pgsql: pdo_pgsql
+          tools: composer:v2
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress --prefer-dist
+      - name: Prepare the Laravel environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+      - name: Integration tests
+        run: composer test:integration
+      # Browser UI tests (Playwright + axe-core, `.ui-quality.yml` level) — only when the scaffold wrote
+      # playwright.config.ts. Its webServer runs `php artisan serve` on the .env above (SQLite), so the database is
+      # created and migrated first; assets are built so the pages render as in production.
+      - name: Set up Node for the browser UI tests
+        if: ${{ hashFiles('playwright.config.*') != '' }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - name: Browser UI tests
+        if: ${{ hashFiles('playwright.config.*') != '' }}
+        run: |
+          npm ci
+          npm run build
+          npx playwright install --with-deps chromium
+          touch database/database.sqlite
+          php artisan migrate --force --no-interaction
+          npm run test:e2e
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots-integration
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore

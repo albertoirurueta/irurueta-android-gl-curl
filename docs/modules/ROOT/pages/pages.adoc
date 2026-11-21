@@ -1,0 +1,87 @@
+= Pages and textures
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+The content of each page is provided by your `PageProvider` implementation, which fills a `CurlPage` every time the
+view needs to (re)draw a page.
+
+== The page provider contract
+
+[source,kotlin]
+----
+interface PageProvider {
+    val pageCount: Int
+    fun updatePage(page: CurlPage, width: Int, height: Int, index: Int, backIndex: Int?)
+}
+----
+
+[cols="1,3",options="header"]
+|===
+|Parameter |Meaning
+
+|`page`
+|The `CurlPage` to fill. It is reset (white colors, no textures) before each call.
+
+|`width`, `height`
+|Size of the page on screen, in pixels. Using it keeps the aspect ratio, but any bitmap size is accepted.
+
+|`index`
+|Zero based index of the page, between `0` and `pageCount - 1`.
+
+|`backIndex`
+|When not `null`, the index of the content to show on the back side of the page. The view provides it for the left
+page and while jumping to another page with `setSmoothCurrentIndex`, where the flipping page reveals the target page.
+|===
+
+`updatePage` is called when the provider is set, when the current page or the view size changes, and while pages are
+flipped, possibly from the OpenGL rendering thread. Keep it fast: decode your images in advance and only scale or draw
+them here.
+
+== Front and back sides
+
+`CurlPage.setTexture(bitmap, side)` sets the texture of a side, where `side` is one of:
+
+[cols="1,3",options="header"]
+|===
+|Constant |Side
+
+|`CurlPage.SIDE_FRONT`
+|Front side, visible when the page lies on the right.
+
+|`CurlPage.SIDE_BACK`
+|Back side, visible while the page is curled and once it lies on the left.
+
+|`CurlPage.SIDE_BOTH`
+|Both sides share the same bitmap.
+|===
+
+[source,kotlin]
+----
+include::example$pageProvider.kt[]
+----
+
+`hasBackTexture` tells whether the back side has its own texture.
+
+== Blend colors
+
+Each side also has a blend color (white by default) that is combined with its texture. A translucent white on the back
+side, as in the sample app, makes a flipped page look like paper through which the printed content shows faintly:
+
+[source,kotlin]
+----
+include::example$pageColors.kt[]
+----
+
+== Textures and memory
+
+OpenGL ES requires texture sizes to be powers of two on many devices, so `CurlPage` copies each bitmap into a bitmap
+whose width and height are the next power of two, and keeps the texture coordinates of the original area. You can pass
+bitmaps of any size; the view takes care of this.
+
+Because pages can be requested often while flipping, avoid decoding images inside `updatePage`:
+
+* Decode the source images once (or keep a cache of the pages close to `currentIndex` for large books) and recycle
+  them when the screen is destroyed.
+* Create the page bitmaps from the cached images in `updatePage`, scaled to `width` x `height`.
+
+Next: xref:navigation.adoc[Page navigation].

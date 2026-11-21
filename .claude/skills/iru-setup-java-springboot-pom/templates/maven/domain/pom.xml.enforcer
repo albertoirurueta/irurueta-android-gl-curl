@@ -1,0 +1,38 @@
+<build>
+  <plugins>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId>
+      <artifactId>maven-enforcer-plugin</artifactId>
+      <executions>
+        <execution>
+          <id>enforce-domain-purity</id>
+          <goals>
+            <goal>enforce</goal>
+          </goals>
+          <configuration>
+            <rules>
+              <bannedDependencies>
+                <searchTransitive>false</searchTransitive>
+                <excludes>
+                  <exclude>org.springframework:*</exclude>
+                  <exclude>org.springframework.boot:*</exclude>
+                  <exclude>org.springframework.data:*</exclude>
+                  <exclude>${project.groupId}:<artifact-id>-application</exclude>
+                  <exclude>${project.groupId}:<artifact-id>-infrastructure-*</exclude>
+                  <exclude>${project.groupId}:<artifact-id>-api-*</exclude>
+                </excludes>
+                <!-- The root pom gives every module spring-boot-starter-test (test scope), which matches
+                     org.springframework.boot:* above; without this include the rule fails on every build. -->
+                <includes>
+                  <include>org.springframework.boot:spring-boot-starter-test:*:*:test</include>
+                </includes>
+                <message>The domain module must not depend on Spring or on any outer module. Define a port
+                  (interface) here and implement it in the adapter module instead.</message>
+              </bannedDependencies>
+            </rules>
+          </configuration>
+        </execution>
+      </executions>
+    </plugin>
+  </plugins>
+</build>

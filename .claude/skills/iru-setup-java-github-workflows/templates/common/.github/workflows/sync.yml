@@ -1,0 +1,141 @@
+name: Sync
+
+# After a release is published from <stable-branch>, open a pull request that merges it back into
+# <integration-branch> and bumps the development snapshot version, so <integration-branch> never has to wait for a
+# manual sync branch. The sync branch is named after the released version (sync_1.0.1), so a later patch release is
+# never mistaken for an already synced one. If the merge conflicts, the PR is opened from the release commit without
+# a version bump, for manual resolution.
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Open sync PR from the released branch into <integration-branch>
+    runs-on: ubuntu-latest
+    if: github.event.release.target_commitish == '<stable-branch>'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compute versions and branch names
+        id: versions
+        run: |
+          set -euo pipefail
+          RELEASE_VERSION="${{ github.event.release.tag_name }}"
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
+          if [ -z "${MAJOR:-}" ] || [ -z "${MINOR:-}" ] || [ -z "${PATCH:-}" ]; then
+            echo "::error::Release tag '$RELEASE_VERSION' is not in X.Y.Z form; cannot compute the next snapshot."
+            exit 1
+          fi
+
+          NEXT_MINOR=$((MINOR + 1))
+          NEXT_SNAPSHOT="${MAJOR}.${NEXT_MINOR}.0-SNAPSHOT"
+          SYNC_BRANCH="sync_${RELEASE_VERSION}"
+
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "next_snapshot=$NEXT_SNAPSHOT" >> "$GITHUB_OUTPUT"
+          echo "sync_branch=$SYNC_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if this release was already synced
+        id: guard
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "${{ steps.versions.outputs.sync_branch }}" >/dev/null 2>&1; then
+            echo "::notice::${{ steps.versions.outputs.sync_branch }} already exists on origin; skipping."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git identity
+        if: steps.guard.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create sync branch from <integration-branch>
+        if: steps.guard.outputs.exists == 'false'
+        run: |
+          git fetch origin <integration-branch> <stable-branch>
+          git checkout -b "${{ steps.versions.outputs.sync_branch }}" "origin/<integration-branch>"
+
+      - name: Merge the released branch into the sync branch
+        id: merge
+        if: steps.guard.outputs.exists == 'false'
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          SYNC_BRANCH: ${{ steps.versions.outputs.sync_branch }}
+        run: |
+          if git merge --no-ff --no-edit \
+              -m "Merge <stable-branch> (${RELEASE_VERSION}) into <integration-branch>" \
+              "origin/<stable-branch>"; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "::warning::Merging <stable-branch> (${RELEASE_VERSION}) into <integration-branch> conflicts; opening the sync pull request from the release commit for manual resolution, without bumping the development version."
+            git checkout -B "${SYNC_BRANCH}" "origin/<stable-branch>"
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Bump the development snapshot version
+        if: steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false'
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          NEXT_SNAPSHOT: ${{ steps.versions.outputs.next_snapshot }}
+        run: python3 .github/scripts/sync_versions.py
+
+      - name: Commit the version bump
+        if: steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false'
+        run: |
+          git add pom.xml README.md docs/antora.yml docs/modules/ROOT/pages
+          git diff --cached --quiet || git commit -m "Sync ${{ steps.versions.outputs.next_snapshot }}"
+
+      - name: Push sync branch
+        if: steps.guard.outputs.exists == 'false'
+        run: git push origin "${{ steps.versions.outputs.sync_branch }}"
+
+      - name: Ensure the sync label exists
+        if: steps.guard.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create sync --description "Sync pull request from a release branch back into <integration-branch>" --color 0e8a16 \
+            || gh label list --search sync >/dev/null
+
+      - name: Open pull request into <integration-branch>
+        if: steps.guard.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFLICT: ${{ steps.merge.outputs.conflict }}
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          NEXT_SNAPSHOT: ${{ steps.versions.outputs.next_snapshot }}
+          SYNC_BRANCH: ${{ steps.versions.outputs.sync_branch }}
+        run: |
+          if [ "$CONFLICT" = "true" ]; then
+            TITLE="Sync ${RELEASE_VERSION} (merge conflicts to resolve)"
+            BODY="Merges \`<stable-branch>\` (\`${RELEASE_VERSION}\`) back into \`<integration-branch>\`. The automatic merge conflicted (usually on the version line), so this branch points at the release commit and the development version was **not** bumped. Resolve the conflicts keeping \`<integration-branch>\`'s development version and taking the release's changes otherwise."
+          else
+            TITLE="Sync ${NEXT_SNAPSHOT}"
+            BODY="Merges \`<stable-branch>\` back into \`<integration-branch>\` after releasing \`${RELEASE_VERSION}\`, and bumps the development snapshot version to \`${NEXT_SNAPSHOT}\` in \`pom.xml\`, \`README.md\`, and the Antora docs."
+          fi
+          gh pr create \
+            --base <integration-branch> \
+            --head "${SYNC_BRANCH}" \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --label sync

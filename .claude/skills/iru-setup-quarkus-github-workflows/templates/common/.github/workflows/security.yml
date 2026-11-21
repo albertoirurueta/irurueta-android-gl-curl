@@ -1,0 +1,109 @@
+name: Security
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ]
+  pull_request:
+    branches: [ <integration-branch>, <stable-branch> ]
+  schedule:
+    - cron: '0 6 * * 1'   # weekly: catch CVEs disclosed after the code was merged
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Gradle only, and only with security-dependency-review: yes — GitHub's dependency graph can't read Gradle build
+  # scripts, so dependency review has nothing to compare without a submitted snapshot.
+  dependency-submission:
+    name: Submit Gradle dependency graph
+    if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+      - name: Generate and submit dependency graph
+        uses: gradle/actions/dependency-submission@v6
+        with:
+          cache-provider: basic
+
+  dependency-review:
+    name: Dependency review
+    needs: dependency-submission                     # Gradle only — drop on Maven
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}   # Maven: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Dependency review
+        uses: actions/dependency-review-action@v5
+        with:                                        # Gradle only — a submitted snapshot may still be processing
+          retry-on-snapshot-warnings: true
+          retry-on-snapshot-warnings-timeout: 600
+
+  codeql:
+    name: CodeQL analysis
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven                     # Maven only
+      - name: Set up Gradle                # Gradle only
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          build-mode: manual               # Kotlin needs a real compilation; Java gets the same for consistency
+      - name: Compile
+        run: ./mvnw -B -ntp compile -DskipTests -Djacoco.skip      # Maven
+        # run: ./gradlew classes                                   # Gradle
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+
+  osv-scanner:
+    name: OSV-Scanner
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.7.0
+    with:
+      scan-args: |-
+        --recursive
+        ./
+
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0                   # scan the history, not just the tree
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

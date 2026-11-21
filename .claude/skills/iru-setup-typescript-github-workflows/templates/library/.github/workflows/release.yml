@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Omit this whole job if publish: no (Step 1) — a private package can't be published. With both this job and
+  # version-pr omitted, do not write release.yml for the library flavor at all: an `on: release` workflow with no
+  # jobs is invalid YAML for Actions, and Step 8 reports the file as "not generated (publish: no)".
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # required for npm OIDC trusted publishing — no NPM_TOKEN secret needed
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: <install-command>
+
+      - name: Build
+        run: <package-manager-run> build
+
+      - name: Publish
+        run: npm publish
+        # Provenance and OIDC identity are automatic once registry-url is set above and the trusted publisher
+        # is configured on npmjs.com for this package, naming THIS workflow file (release.yml) and job
+        # (publish) — see Step 7. No NODE_AUTH_TOKEN/NPM_TOKEN env var is needed or should be set here.
+
+  # Omit this whole job if publish: no (Step 1) — Changesets manages the version-PR workflow, so it only
+  # makes sense once npm publishing itself is wired up
+  version-pr:
+    name: Open/update the Changesets version PR
+    if: github.event_name == 'workflow_dispatch' || github.ref == format('refs/heads/{0}', '<stable-branch>')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+
+      - name: Install dependencies
+        run: <install-command>
+
+      - name: Create or update the version PR
+        uses: changesets/action@v2
+        with:
+          version: <package-manager-exec> changeset version # npx changeset version | pnpm exec changeset version | yarn changeset version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

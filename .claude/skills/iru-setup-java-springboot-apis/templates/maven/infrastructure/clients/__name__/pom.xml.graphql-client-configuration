@@ -1,0 +1,14 @@
+<configuration>
+  <graphqlSchemaPaths>
+    <path>${maven.multiModuleProjectDirectory}/apis/graphql-client/<name>/<name>-api.graphqls</path>
+  </graphqlSchemaPaths>
+  <outputDir>${project.build.directory}/generated-sources/graphql-client-<name></outputDir>
+  <apiPackageName><base>.infrastructure.clients.<name>.generated.api</apiPackageName>
+  <modelPackageName><base>.infrastructure.clients.<name>.generated.model</modelPackageName>
+  <!-- The mirror image of the server configuration: request/response and projection classes,
+       no resolver interfaces. -->
+  <generateApis>false</generateApis>
+  <generateClient>true</generateClient>
+  <modelValidationAnnotation>jakarta.validation.constraints.NotNull</modelValidationAnnotation>
+  <addGeneratedAnnotation>false</addGeneratedAnnotation>
+</configuration>

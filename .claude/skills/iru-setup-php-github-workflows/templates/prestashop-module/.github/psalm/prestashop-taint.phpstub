@@ -1,0 +1,31 @@
+<?php
+// Taint annotations for the PrestaShop input/escaping API (read by Psalm only, never loaded by PHP).
+class Tools
+{
+    /** @psalm-taint-source input */
+    public static function getValue($key, $default_value = false) {}
+    /** @psalm-taint-source input */
+    public static function getAllValues() {}
+    /** @psalm-taint-escape html @psalm-taint-escape has_quotes */
+    public static function safeOutput($string, $html = false) {}
+    /** @psalm-taint-escape html @psalm-taint-escape has_quotes */
+    public static function htmlentitiesUTF8($string, $type = ENT_QUOTES) {}
+}
+class Db
+{
+    /** @return Db */
+    public static function getInstance($master = true) {}
+    /** @psalm-taint-sink sql $sql */
+    public function execute($sql, $use_cache = true) {}
+    /** @psalm-taint-sink sql $sql */
+    public function executeS($sql, $array = true, $use_cache = true) {}
+    /** @psalm-taint-sink sql $sql */
+    public function getValue($sql, $use_cache = true) {}
+    /** @psalm-taint-sink sql $sql */
+    public function getRow($sql, $use_cache = true) {}
+}
+/** @psalm-taint-escape sql */
+function pSQL($string, $htmlOK = false) {}
+/** @psalm-taint-escape sql */
+function bqSQL($string) {}
+class Module {}

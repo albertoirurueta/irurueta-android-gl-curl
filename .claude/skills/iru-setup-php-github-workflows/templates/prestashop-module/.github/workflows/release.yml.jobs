@@ -1,0 +1,40 @@
+jobs:
+  package:
+    name: Build the module zip
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v7
+      - name: Check the version matches the tag
+        run: |
+          VERSION="${TAG#v}"
+          python3 .github/scripts/php_version.py --list | grep -E '^[^ ]+:[0-9]+: ' > "$RUNNER_TEMP/versions.txt"
+          cat "$RUNNER_TEMP/versions.txt"
+          if grep -v -F ": $VERSION " "$RUNNER_TEMP/versions.txt"; then
+            echo "::error::Some version locations don't match the release tag $VERSION (iru-php-bump-version $VERSION fixes them)."
+            exit 1
+          fi
+      - name: Set up PHP <php-floor>
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '<php-floor>'
+          coverage: none
+          tools: composer:v2
+      # bin/package.sh: .distignore'd copy, composer install --no-dev, index.php guard in every directory.
+      - name: Build build/<slug>-<version>.zip
+        run: composer package
+      - name: Attach the zip to the GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$TAG" "build/<slug>-${TAG#v}.zip" --clobber
+      # store only — the PrestaShop Addons marketplace has no upload API.
+      - name: PrestaShop Addons instructions
+        run: |
+          {
+            echo "### Publish ${TAG#v} on PrestaShop Addons"
+            echo "1. Download \`<slug>-${TAG#v}.zip\` from this release."
+            echo "2. Seller account → Products → <your module> → upload a new version; set the PrestaShop compatibility range to match \`ps_versions_compliancy\`."
+            echo "3. Fill in the changelog (copy this release's CHANGELOG.md section) and submit for validation."
+          } >> "$GITHUB_STEP_SUMMARY"

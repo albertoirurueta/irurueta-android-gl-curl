@@ -1,0 +1,135 @@
+name: Sync
+
+# After a release is published from <stable-branch>, open a pull request that merges it back into
+# <integration-branch> and bumps the development version to the next X.(Y+1).0.dev0.
+on:
+  release:
+    types: [ released ]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Open sync PR from the released branch into <integration-branch>
+    runs-on: ubuntu-latest
+    if: ${{ github.event.release.target_commitish == '<stable-branch>' }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Compute versions and branch names
+        id: versions
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          RELEASE_VERSION="${TAG#v}"
+          if ! [[ "$RELEASE_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Release tag '$RELEASE_VERSION' is not in X.Y.Z form; cannot compute the next .dev0 version."
+            exit 1
+          fi
+          MAJOR="${BASH_REMATCH[1]}"
+          NEXT_MINOR=$((BASH_REMATCH[2] + 1))
+          {
+            echo "release_version=$RELEASE_VERSION"
+            echo "next_version=${MAJOR}.${NEXT_MINOR}.0.dev0"
+            echo "sync_branch=sync_${RELEASE_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Skip if this release was already synced
+        id: guard
+        run: |
+          if git ls-remote --exit-code --heads origin "${{ steps.versions.outputs.sync_branch }}" >/dev/null 2>&1; then
+            echo "::notice::${{ steps.versions.outputs.sync_branch }} already exists on origin; skipping."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git identity
+        if: ${{ steps.guard.outputs.exists == 'false' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      # The branch is named after the released version, so the guard means "this release was already synced".
+      - name: Create the sync branch and merge the release into it
+        id: merge
+        if: ${{ steps.guard.outputs.exists == 'false' }}
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          SYNC_BRANCH: ${{ steps.versions.outputs.sync_branch }}
+        run: |
+          git fetch origin <integration-branch> <stable-branch>
+          git checkout -b "${SYNC_BRANCH}" "origin/<integration-branch>"
+          if git merge --no-ff --no-edit \
+              -m "Merge <stable-branch> (${RELEASE_VERSION}) into <integration-branch>" \
+              "origin/<stable-branch>"; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "::warning::Merging <stable-branch> (${RELEASE_VERSION}) into <integration-branch> conflicts; opening the sync pull request from the release commit for manual resolution, without bumping the development version."
+            git checkout -B "${SYNC_BRANCH}" "origin/<stable-branch>"
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up uv
+        if: ${{ steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false' }}
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: '<python-version>'
+
+      # Same helper iru-python-bump-version uses: rewrites pyproject.toml, __version__ literals, a Django settings
+      # VERSION and a FastAPI(version=) that tracks the package; refuses if they disagree.
+      - name: Bump the development version
+        if: ${{ steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false' }}
+        run: python3 .github/scripts/python_version.py "${{ steps.versions.outputs.next_version }}"
+
+      # uv.lock records this project's own version; without this, uv sync --locked fails on the sync branch.
+      - name: Refresh uv.lock
+        if: ${{ steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false' }}
+        run: uv lock
+
+      - name: Bump README and Antora versions
+        if: ${{ steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false' }}
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+        run: python3 .github/scripts/sync_versions.py
+
+      - name: Commit and push the sync branch
+        if: ${{ steps.guard.outputs.exists == 'false' }}
+        run: |
+          if [ "${{ steps.merge.outputs.conflict }}" = "false" ]; then
+            git add -u
+            git diff --cached --quiet || git commit -m "Sync ${{ steps.versions.outputs.next_version }}"
+          fi
+          git push origin "${{ steps.versions.outputs.sync_branch }}"
+
+      - name: Open pull request into <integration-branch>
+        if: ${{ steps.guard.outputs.exists == 'false' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CONFLICT: ${{ steps.merge.outputs.conflict }}
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+        run: |
+          gh label create sync --color 0e8a16 \
+            --description "Sync pull request from a release back into <integration-branch>" 2>/dev/null || true
+          if [ "$CONFLICT" = "false" ]; then
+            TITLE="Sync ${NEXT_VERSION}"
+            BODY="Merges \`<stable-branch>\` back into \`<integration-branch>\` after releasing \`${RELEASE_VERSION}\`, and bumps the development version to \`${NEXT_VERSION}\`."
+          else
+            TITLE="Sync ${RELEASE_VERSION} (merge conflicts to resolve)"
+            BODY="Merges \`<stable-branch>\` (\`${RELEASE_VERSION}\`) back into \`<integration-branch>\`. The automatic merge conflicted (usually on the version line), so this branch points at the release commit and the development version was **not** bumped. Resolve the conflicts keeping \`<integration-branch>\`'s development version and taking the release's changes otherwise."
+          fi
+          gh pr create \
+            --base <integration-branch> \
+            --head "${{ steps.versions.outputs.sync_branch }}" \
+            --title "$TITLE" \
+            --body "$BODY" \
+            --label sync

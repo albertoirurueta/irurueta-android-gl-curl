@@ -1,0 +1,217 @@
+name: Develop
+
+on:
+  push:
+    branches: [ <integration-branch> ]
+  workflow_dispatch:
+
+permissions:
+  checks: write
+  pull-requests: write
+  contents: write
+  security-events: write   # required by github/codeql-action/upload-sarif (the Lint SARIF upload steps below)
+
+jobs:
+  build:
+    name: Build and execute tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # Only when run-instrumented-tests: yes — the emulator needs hardware acceleration, which GitHub-hosted
+      # Linux runners don't expose by default.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '<java-version>'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          dependency-graph: generate-and-submit
+
+      # run-instrumented-tests: yes — runs the build/test/lint/docs command INSIDE the emulator so
+      # connectedAndroidTest has a device to target. flavor: library includes `<lib-module>:dokkaGenerate` in
+      # the same script (matching the reference repository exactly); flavor: app omits it (no docs module).
+      - name: Run tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: <api-level>
+          target: google_apis
+          arch: x86_64
+          script: ./gradlew clean test connectedAndroidTest lint <lib-module>:dokkaGenerate
+
+      # run-instrumented-tests: no — plain Gradle invocation, no emulator/KVM step above either.
+      - name: Run tests
+        run: ./gradlew clean test lint <lib-module>:dokkaGenerate
+
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: (!cancelled())
+        with:
+          files: |
+            <app-module>/build/test-results/**/*.xml
+            <app-module>/build/outputs/androidTest-results/**/*.xml
+            <lib-module>/build/test-results/**/*.xml
+            <lib-module>/build/outputs/androidTest-results/**/*.xml
+
+      # UI screenshots (catalog UI contract): the Robolectric/Roborazzi UI tests `test` runs write
+      # .ui-screenshots/<kind>/<Id>/<state>--<direction>--<theme>.png at the repository root; with
+      # run-instrumented-tests: yes, device captures written through AndroidX Test Storage land under each
+      # module's connected_android_test_additional_output. Evidence only — nothing is published.
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: |
+            .ui-screenshots/
+            */build/outputs/connected_android_test_additional_output/**/ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Preferred path — confirmed working against the AGP version iru-setup-android-library/-app resolved:
+      # createDebugUnitTestCoverageReport emits build/reports/coverage/test/debug/report.xml directly, no
+      # .exec-to-XML conversion needed. Use this form unless Step 1's survey found a vendored
+      # jacoco-*/lib/jacococli.jar (the fallback immediately below). IMPORTANT — only target the module(s)
+      # that actually set `enableUnitTestCoverage = true` in their buildTypes.debug block (Step 1's survey):
+      # `iru-setup-android-library`'s OWN sample `app/` module does NOT set it (confirmed by running this
+      # task against it — `Cannot locate tasks that match ':<app-module>:createDebugUnitTestCoverageReport'`,
+      # a hard failure, not a no-op), so for `flavor: library` this targets `<lib-module>` ONLY, even when a
+      # sample `app/` module also exists. For `flavor: app`, `iru-setup-android-app`'s own template DOES set
+      # it, so this targets `<app-module>` instead.
+      - name: Convert unit tests coverage results
+        run: ./gradlew <lib-module>:createDebugUnitTestCoverageReport
+      # flavor: app instead: run: ./gradlew <app-module>:createDebugUnitTestCoverageReport
+
+      # Fallback — only when Step 1's survey found a vendored jacoco-<ver>/lib/jacococli.jar (an older layout
+      # some repositories still carry over from before AGP emitted the XML report directly), or the user
+      # explicitly asked for it instead. Converts the raw .exec file AGP still writes alongside the XML by
+      # hand — this mirrors the reference repository's own older CI step, with paths corrected to where AGP
+      # actually writes the .exec file under the version this catalog's Android skills resolved (NOT
+      # `<lib-module>/build/jacoco/testReleaseUnitTest.exec`, which is where the reference repository's
+      # older CI looked, and is stale).
+      - name: Convert unit tests coverage results (vendored jacococli.jar fallback)
+        run: |
+          mkdir -p <lib-module>/build/reports/coverage/test/debug || true
+          java -jar jacoco-<jacoco-cli-version>/lib/jacococli.jar report \
+            <lib-module>/build/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec \
+            --classfiles <lib-module>/build/tmp/kotlin-classes/debug \
+            --sourcefiles <lib-module>/src/main/java \
+            --xml <lib-module>/build/reports/coverage/test/debug/report.xml || true
+
+      - name: Upload lint SARIF results
+        if: (!cancelled())
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: <lib-module>/build/reports/lint-results-debug.sarif
+
+      # Only when app/** exists alongside lib/** (the iru-setup-android-library sample module), or flavor: app
+      - name: Upload app lint SARIF results
+        if: (!cancelled())
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: <app-module>/build/reports/lint-results-debug.sarif
+
+      # Omit this whole step if sonar: none (Step 0). flavor: library runs `:<lib-module>:sonar`; flavor: app
+      # runs `:<app-module>:sonar` instead (there is no lib module to scan).
+      - name: Run SonarCloud analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./gradlew :<lib-module>:sonar
+
+      # Omit this whole block if flavor: app — no docs module to publish.
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge Dokka API docs into the Antora site
+        run: |
+          touch ./docs/build/site/.nojekyll
+          mkdir -p ./docs/build/site/api
+          cp -r ./<lib-module>/build/dokka/html/. ./docs/build/site/api/
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into build/site.
+      # - name: Check site size
+      #   working-directory: docs
+      #   run: |
+      #     size=$(du -sk build/site | cut -f1)
+      #     echo "build/site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      # pages: yes — feeds the deploy-docs job below.
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./docs/build/site
+
+      # pages: no — replaces the step above: the docs are still built (which validates them) but only kept as a
+      # downloadable workflow artifact; nothing is published, and the deploy-docs job below is omitted.
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site
+          path: ./docs/build/site
+      # End of the flavor: app omission block
+
+      # Omit this whole step if publish: no (Step 0). flavor: library only — a plain snapshot publish, no
+      # release build/signing (the version in libraryVersion is already a -SNAPSHOT string on this branch).
+      - name: Publish snapshot to Maven Central
+        run: ./gradlew <lib-module>:publishToMavenCentral --no-configuration-cache
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_MEMORY_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+
+  # Omit this whole job if flavor: app (no docs to deploy) or pages: no (docs only uploaded as an artifact) —
+  # its pages: write / id-token: write permissions exist only for this deploy and go with it.
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

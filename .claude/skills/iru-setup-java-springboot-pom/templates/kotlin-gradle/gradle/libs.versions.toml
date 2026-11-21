@@ -1,0 +1,58 @@
+[versions]
+java = "<java-version>"
+kotlin = "<kotlin-version>"
+spring-boot = "<spring-boot-version>"
+detekt = "<latest>"
+ktlint-gradle = "<latest>"
+ktlint = "<latest>"
+dokka = "<latest>"
+jacoco = "<latest>"
+sonarqube = "<latest>"              # omit when sonar.mode: none
+mockk = "<latest>"
+springmockk = "<latest-5.x>"
+archunit = "<latest>"
+# BOM versions copied from the reference build; omit any not present there.
+spring-cloud = "<from-reference-build>"
+spring-ai = "<from-reference-build>"
+# Only what the stack uses (see Step 1's property list for the Maven equivalents).
+caffeine = "<latest>"
+flamingock = "<latest>"
+
+[libraries]
+# BOMs — applied with platform() by iru.kotlin-library; they manage every Spring, Jackson, Kotlin, JUnit,
+# coroutines and Testcontainers version.
+spring-boot-dependencies = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "spring-boot" }
+spring-cloud-dependencies = { module = "org.springframework.cloud:spring-cloud-dependencies", version.ref = "spring-cloud" }
+spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "spring-ai" }
+
+# BOM-managed: no version here on purpose. One alias per starter/driver in the reference build, named after its
+# artifactId (spring-boot-starter-webmvc -> spring-boot-starter-webmvc), plus these:
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core" }
+kotlinx-coroutines-reactor = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-reactor" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test" }
+jackson-module-kotlin = { module = "tools.jackson.module:jackson-module-kotlin" }
+spring-boot-starter = { module = "org.springframework.boot:spring-boot-starter" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-testcontainers = { module = "org.springframework.boot:spring-boot-testcontainers" }
+spring-cloud-context = { module = "org.springframework.cloud:spring-cloud-context" }
+testcontainers-junit-jupiter = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+# Not BOM-managed.
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+springmockk = { module = "com.ninja-squad:springmockk", version.ref = "springmockk" }
+archunit-junit5 = { module = "com.tngtech.archunit:archunit-junit5", version.ref = "archunit" }
+
+# Plugin artifacts the build-logic convention plugins compile against (versions shared with the aliases above).
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+kotlin-allopen = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
+kotlin-noarg = { module = "org.jetbrains.kotlin:kotlin-noarg", version.ref = "kotlin" }
+spring-boot-gradle-plugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "spring-boot" }
+detekt-gradle-plugin = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
+ktlint-gradle-plugin = { module = "org.jlleitschuh.gradle:ktlint-gradle", version.ref = "ktlint-gradle" }
+dokka-gradle-plugin = { module = "org.jetbrains.dokka:dokka-gradle-plugin", version.ref = "dokka" }
+
+[plugins]
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }

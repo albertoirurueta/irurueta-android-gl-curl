@@ -1,0 +1,12 @@
+  <FindBugsFilter>
+    <Match>
+      <Source name="~.*[\\/]generated-sources[\\/].*"/>
+    </Match>
+    <Match>
+      <Class name="~.*\.generated\..*"/>
+    </Match>
+    <!-- MapStruct-generated implementations -->
+    <Match>
+      <Class name="~.*MapperImpl"/>
+    </Match>
+  </FindBugsFilter>

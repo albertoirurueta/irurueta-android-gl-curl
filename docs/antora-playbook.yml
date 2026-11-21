@@ -1,0 +1,48 @@
+site:
+  title: Irurueta Android GL Curl
+  start_page: irurueta-android-gl-curl::index.adoc
+  # keys:                          # optional nav knobs, see ui-overrides/README.md
+  #   nav_open_groups: 'Group A, Group B'
+  #   nav_expand_depth: 1
+content:
+  sources:
+    - url: ..
+      branches: HEAD
+      start_path: docs
+ui:
+  bundle:
+    url: ui-bundle.zip
+    snapshot: true
+  supplemental_files:
+    - path: ui.yml
+      contents: |
+        static_files:
+        - .nojekyll
+    - path: .nojekyll
+    - path: partials/article.hbs
+      contents: ./ui-overrides/partials/article.hbs
+    - path: partials/footer-scripts.hbs
+      contents: ./ui-overrides/partials/footer-scripts.hbs
+    - path: partials/head-styles.hbs
+      contents: ./ui-overrides/partials/head-styles.hbs
+    - path: partials/header-content.hbs
+      contents: ./ui-overrides/partials/header-content.hbs
+    - path: partials/nav-tree.hbs
+      contents: ./ui-overrides/partials/nav-tree.hbs
+    - path: helpers/nav-item-state.js
+      contents: ./ui-overrides/helpers/nav-item-state.js
+    - path: css/pagefind-site.css
+      contents: ./ui-overrides/css/pagefind-site.css
+antora:
+  extensions:
+    - require: '@sntke/antora-mermaid-extension'
+      mermaid_library_url: https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs
+      script_stem: header-scripts
+      mermaid_initialize_options:
+        start_on_load: true
+asciidoc:
+  attributes:
+    mathjax-tex-tags: ams
+    mathjax-tex-packages: ams
+  extensions:
+    - '@djencks/asciidoctor-mathjax'

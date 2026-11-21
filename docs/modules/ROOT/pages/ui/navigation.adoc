@@ -1,0 +1,14 @@
+= Navigation flows
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+The sample app has a single screen, `MainActivity`, opened from the launcher. Within it, the user moves between pages
+by flipping them.
+
+[mermaid]
+....
+flowchart LR
+  launch([App launch]) --> main["MainActivity (page n)"]
+  main -->|"flip right page"| next["MainActivity (page n + 1)"]
+  next -->|"flip left page"| main
+....

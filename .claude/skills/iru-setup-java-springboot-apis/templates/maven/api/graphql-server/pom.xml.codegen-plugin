@@ -1,0 +1,32 @@
+<plugin>
+  <groupId>io.github.kobylynskyi</groupId>
+  <artifactId>graphql-codegen-maven-plugin</artifactId>
+  <executions>
+    <execution>
+      <id>generate-graphql-server-v1</id>
+      <phase>generate-sources</phase>
+      <goals>
+        <goal>generate</goal>
+      </goals>
+      <configuration>
+        <graphqlSchemaPaths>
+          <path>${maven.multiModuleProjectDirectory}/apis/graphql-server/<service>-v1.graphqls</path>
+        </graphqlSchemaPaths>
+        <outputDir>${project.build.directory}/generated-sources/graphql-server</outputDir>
+        <apiPackageName><base>.api.graphql.v1.generated.api</apiPackageName>
+        <modelPackageName><base>.api.graphql.v1.generated.model</modelPackageName>
+        <!-- Interfaces only, never implementations: the hand-written @Controller implements the
+             resolver interface, so regeneration can't overwrite real logic. Same reasoning as
+             interfaceOnly=true for the REST generator. -->
+        <generateApis>true</generateApis>
+        <generateClient>false</generateClient>
+        <!-- The default is javax.validation.constraints.NotNull, which does NOT exist on Spring
+             Boot 3+/Jakarta and fails compilation with "package javax.validation does not exist".
+             This override is required, not cosmetic. -->
+        <modelValidationAnnotation>jakarta.validation.constraints.NotNull</modelValidationAnnotation>
+        <!-- The @Generated annotation embeds a build timestamp, making output non-reproducible. -->
+        <addGeneratedAnnotation>false</addGeneratedAnnotation>
+      </configuration>
+    </execution>
+  </executions>
+</plugin>

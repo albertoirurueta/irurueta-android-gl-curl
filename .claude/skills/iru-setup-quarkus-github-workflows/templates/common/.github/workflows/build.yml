@@ -1,0 +1,205 @@
+name: Build
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ]
+  pull_request:
+    branches: [ <integration-branch>, <stable-branch> ]
+  workflow_dispatch:
+
+# A newer push to the same branch/PR makes the running build obsolete.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and analyse
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          # Sonar attributes issues using full history.
+          fetch-depth: 0
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven                     # Maven: keep this line; Gradle: drop it (setup-gradle caches)
+
+      - name: Set up Gradle                # Gradle only
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      # ci-tests: full — Surefire/test runs plain, component and @QuarkusTest classes (Dev Services start PostgreSQL,
+      # Kafka, … containers on the runner's Docker), then the @QuarkusIntegrationTest classes run against the packaged
+      # jar; the JaCoCo 80% check runs in verify/check.
+      - name: Build, tests and coverage gate
+        run: ./mvnw -B -ntp verify -DskipITs=false            # Maven
+        # run: ./gradlew check <app-module>quarkusIntTest     # Gradle
+
+      # ci-tests: unit — no containers: Dev Services off and every @QuarkusTest/@QuarkusMainTest class excluded, so
+      # only plain and @QuarkusComponentTest classes run. The coverage gate is measured from exactly those.
+      - name: Build, unit tests and coverage gate (no containers)
+        env:
+          QUARKUS_DEVSERVICES_ENABLED: "false"
+        run: |
+          grep -rlE '^[[:space:]]*@Quarkus(Main)?Test([^A-Za-z0-9_]|$)' --include='*.java' --include='*.kt' . \
+            | sed -E 's#^(.*/)?src/test/(java|kotlin)/##; s#\.(java|kt)$#.class#' > "$RUNNER_TEMP/quarkus-tests.excludes" || true
+          ./mvnw -B -ntp verify -DskipITs -Dsurefire.excludesFile="$RUNNER_TEMP/quarkus-tests.excludes"        # Maven
+          # ./gradlew check -PexcludeTestsFile="$RUNNER_TEMP/quarkus-tests.excludes"                           # Gradle
+
+      # Java: Checkstyle/PMD/SpotBugs findings as XML for the job artifact (they report, the coverage check gates).
+      - name: Static analysis reports
+        run: ./mvnw -B -ntp checkstyle:checkstyle pmd:pmd spotbugs:spotbugs     # Maven + Java
+        # run: ./gradlew checkstyleMain pmdMain spotbugsMain                    # Gradle + Java
+        # Kotlin: drop this step — detekt and ktlint already ran (and gate) inside verify/check.
+
+      # sonar: cloud | self-hosted only — drop the whole step for sonar: none. Fork pull requests get no secrets.
+      - name: Run SonarCloud analysis
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: ./mvnw -B -ntp sonar:sonar          # Maven
+        # run: ./gradlew sonar                   # Gradle
+
+      - name: Upload test and quality reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          retention-days: 7
+          # Maven paths; Gradle: '**/build/test-results/**', '**/build/reports/**'
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+            **/target/site/jacoco/**
+            **/target/checkstyle-result.xml
+            **/target/pmd.xml
+            **/target/spotbugsXml.xml
+            **/target/detekt.xml
+            **/target/ktlint.xml
+
+  # native: yes only — builds the native executable inside a Mandrel builder container and re-runs the
+  # @QuarkusIntegrationTest classes against it. Pushes to <stable-branch> and manual runs only: it takes minutes and
+  # several GB of memory, too much for every pull request.
+  native:
+    name: Native build and integration tests
+    needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/<stable-branch>') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven                     # Maven only
+      - name: Set up Gradle                # Gradle only
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Native build and integration tests
+        run: ./mvnw -B -ntp verify -Pnative -Dquarkus.native.container-build=true -DskipTests        # Maven
+        # run: ./gradlew <app-module>quarkusIntTest -Dquarkus.native.enabled=true -Dquarkus.native.container-build=true -Dquarkus.package.jar.enabled=false   # Gradle
+
+  docs:
+    name: Build documentation
+    needs: build
+    # Docs are built on every push (so a broken page fails the branch) but only published from <stable-branch>.
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write                      # pages: yes — pushes the gh-pages branch; pages: no → drop this block
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven                     # Maven only
+      - name: Set up Gradle                # Gradle only
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      # Java + Maven: the Maven site (Javadoc, test/coverage/Checkstyle/PMD/SpotBugs/JXR reports).
+      # Hexagonal: `./mvnw -B -ntp install -DskipTests -Djacoco.skip` first, then `site site:stage`, and copy
+      # target/staging instead of target/site below.
+      - name: Generate API documentation
+        run: ./mvnw -B -ntp site -DskipTests -Djacoco.skip          # Java + Maven
+        # run: ./gradlew javadoc                                    # Java + Gradle   → build/docs/javadoc
+        # run: ./mvnw -B -ntp compile dokka:dokka                   # Kotlin + Maven  → target/dokka
+        # run: ./gradlew dokkaGeneratePublicationHtml               # Kotlin + Gradle → build/dokka/html
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge documentation
+        run: |
+          cp -r docs/build/site ./doc
+          touch ./doc/.nojekyll
+          cp -r target/site ./doc/mvn-site            # Java + Maven (hexagonal: target/staging)
+          # mkdir -p doc/api && cp -r build/docs/javadoc doc/api/javadoc   # Java + Gradle
+          # mkdir -p doc/api && cp -r target/dokka doc/api/kdoc            # Kotlin + Maven
+          # mkdir -p doc/api && cp -r build/dokka/html doc/api/kdoc        # Kotlin + Gradle
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into the site directory.
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk doc | cut -f1)
+      #     echo "site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      # pages: yes — publish from <stable-branch> only.
+      - name: Deploy to GitHub Pages
+        if: ${{ github.ref == 'refs/heads/<stable-branch>' }}
+        uses: crazy-max/ghaction-github-pages@v5
+        with:
+          target_branch: gh-pages
+          build_dir: ./doc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # pages: no — replace the deploy step with this (and drop the job's permissions block and the .nojekyll touch).
+      - name: Upload documentation
+        uses: actions/upload-artifact@v7
+        with:
+          name: documentation
+          path: ./doc
+          retention-days: 14

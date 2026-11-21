@@ -1,0 +1,17 @@
+     dependency-review:
+       name: Dependency review
+       needs: dependency-submission
+       # !cancelled(): still runs when the submission job was skipped (fork PR), reviewing whatever graph exists.
+       if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+       runs-on: ubuntu-latest
+       permissions:
+         contents: read
+         pull-requests: write
+       steps:
+         - name: Check out code
+           uses: actions/checkout@v7
+         - name: Dependency review
+           uses: actions/dependency-review-action@v5
+           with:
+             retry-on-snapshot-warnings: true
+             retry-on-snapshot-warnings-timeout: 600

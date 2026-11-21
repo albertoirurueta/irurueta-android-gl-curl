@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<psalm errorLevel="8" resolveFromConfigFile="false" findUnusedCode="false" findUnusedBaselineEntry="false"
+       xmlns="https://getpsalm.org/schema/config">
+    <projectFiles>
+        <project-files/>
+        <ignoreFiles allowMissingFiles="true">
+            <directory name="vendor"/>
+            <directory name="tests"/>
+        </ignoreFiles>
+    </projectFiles>
+    <stubs>
+        <file name=".github/psalm/wordpress-taint.phpstub"/>   <!-- PrestaShop: prestashop-taint.phpstub -->
+    </stubs>
+    <globals>
+        <var name="wpdb" type="\wpdb"/>
+    </globals>
+</psalm>

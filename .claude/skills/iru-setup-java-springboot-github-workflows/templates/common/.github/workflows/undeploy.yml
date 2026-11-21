@@ -1,0 +1,72 @@
+name: Undeploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to undeploy
+        required: true
+        type: choice
+        options: [ dev, prod ]
+      mode:
+        description: stop = scale the service to zero (infrastructure kept); destroy = delete all infrastructure
+        required: true
+        type: choice
+        options: [ stop, destroy ]
+        default: stop
+      confirmation:
+        description: Type the environment name exactly to confirm
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-${{ inputs.environment }}     # same group as deploy.yml: never both at once
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  undeploy:
+    name: ${{ inputs.mode }} ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Verify the typed confirmation
+        # Cheap, and it has stopped a wrong-environment destroy more than once.
+        run: |
+          if [ "${{ inputs.confirmation }}" != "${{ inputs.environment }}" ]; then
+            echo "::error::Confirmation '${{ inputs.confirmation }}' does not match environment '${{ inputs.environment }}'."
+            exit 1
+          fi
+
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Configure cloud credentials
+        # Same OIDC step as deploy.yml
+        run: echo "replace with the AWS or Google Cloud OIDC auth action"
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@v2
+
+      - name: Tofu init
+        working-directory: infra/envs/${{ inputs.environment }}
+        run: tofu init
+
+      - name: Stop the service (scale to zero)
+        if: inputs.mode == 'stop'
+        working-directory: infra/envs/${{ inputs.environment }}
+        run: |
+          tofu apply -input=false -auto-approve -var="desired_count=0" -var="min_instances=0"
+
+      - name: Show the destroy plan
+        if: inputs.mode == 'destroy'
+        working-directory: infra/envs/${{ inputs.environment }}
+        run: tofu plan -destroy -input=false -out=tfdestroy
+
+      - name: Destroy the environment
+        if: inputs.mode == 'destroy'
+        working-directory: infra/envs/${{ inputs.environment }}
+        run: tofu apply -input=false -auto-approve tfdestroy

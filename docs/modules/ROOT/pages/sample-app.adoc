@@ -1,0 +1,32 @@
+= Sample app
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+The `app` module contains a small application, `MainActivity`, that shows three images as the pages of a book over a
+title:
+
+image::video.gif[Sample app: three images flipped like book pages over a bold title,width=304]
+
+== What it shows
+
+* A `ConstraintLayout` with a `TextView` title and a full screen `CurlTextureView` on top of it. Because the curl view
+  has a transparent background, the title remains visible behind the pages.
+* Three drawables decoded once in `onCreate` and recycled in `onDestroy`.
+* A `PageProvider` that draws each image centered on a white page of the requested size, and sets a translucent
+  white (`#CCFFFFFF`) blend color on the back side.
+* A `SizeChangedObserver` that computes proportional margins from a 20dp margin and the title height, and then sets
+  the page provider.
+* `onResume` / `onPause` forwarded to the view.
+
+== Running it
+
+Open the project in Android Studio and run the `app` configuration, or from the command line:
+
+[source,shell]
+----
+./gradlew :app:installDebug
+----
+
+The relevant code is in `app/src/main/java/com/irurueta/android/gl/curl/MainActivity.kt` and
+`app/src/main/res/layout/activity_main.xml`. The xref:usage.adoc#size[Reacting to size changes] section reproduces its
+margin computation.

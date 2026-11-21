@@ -1,0 +1,11 @@
+{{!-- Override of the bundle's header-content partial: adds the Pagefind search container and drops the bundle's placeholder menu (Products, Services, Download) and its burger. --}}
+<header class="header">
+  <nav class="navbar">
+    <div class="navbar-brand">
+      <a class="navbar-item" href="{{{or site.url siteRootPath}}}"><img src="{{{uiRootPath}}}/img/logo.svg" alt="{{site.title}}" class="navbar-brand-logo">{{site.title}}</a>
+      <div class="navbar-item search hide-for-print">
+        <div id="search"></div>
+      </div>
+    </div>
+  </nav>
+</header>

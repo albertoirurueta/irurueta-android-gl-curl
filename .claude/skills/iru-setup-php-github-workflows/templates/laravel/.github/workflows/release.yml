@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  release:
+    types: [ released ]
+
+permissions:
+  contents: read
+  packages: write                          # GHCR push with GITHUB_TOKEN
+
+jobs:
+  image:
+    name: Build and push the container image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v7
+      - name: Compute image coordinates
+        id: image
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"   # registry paths must be lowercase
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ steps.image.outputs.owner }}/<slug>
+          tags: |
+            type=raw,value=${{ steps.image.outputs.version }}
+            type=raw,value=latest
+      # frankenphp: the only build. fpm: the "app" target (PHP-FPM); the web image follows.
+      - name: Build and push the application image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: app                      # fpm only — drop for frankenphp
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      # fpm only — the Nginx "web" target serving public/ and proxying PHP to the app container.
+      - name: Web image metadata
+        id: meta-web
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ steps.image.outputs.owner }}/<slug>-web
+          tags: |
+            type=raw,value=${{ steps.image.outputs.version }}
+            type=raw,value=latest
+      - name: Build and push the web image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: web
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

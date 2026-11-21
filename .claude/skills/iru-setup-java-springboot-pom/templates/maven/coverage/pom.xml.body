@@ -1,0 +1,37 @@
+  <artifactId><artifact-id>-coverage</artifactId>
+  <packaging>pom</packaging>
+  <name>${project.groupId}:${project.artifactId}</name>
+  <description>JaCoCo coverage aggregation across every module. No sources of its own.</description>
+
+  <dependencies>
+    <!-- one test-scope entry per module whose coverage should be aggregated -->
+    <dependency>
+      <groupId>${project.groupId}</groupId>
+      <artifactId><artifact-id>-domain</artifactId>
+    </dependency>
+    <!-- ... -->
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>aggregate-report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report-aggregate</goal>
+            </goals>
+            <configuration>
+              <dataFileIncludes>
+                <dataFileInclude>**/jacoco*.exec</dataFileInclude>
+              </dataFileIncludes>
+              <outputDirectory>${project.build.directory}/site/jacoco-aggregate</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>

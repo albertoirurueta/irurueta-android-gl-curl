@@ -1,0 +1,45 @@
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Resolve image tag
+        id: meta
+        # The project version lives in gradle.properties (`version=`), the Gradle counterpart of the pom's
+        # <version>. The default tag is <version>-<short sha>: traceable to the release and still unique per
+        # commit, so an immutable-tag registry policy never rejects a redeploy of a SNAPSHOT.
+        env:
+          # Passed through env, not interpolated into the script, so a crafted input can't inject shell.
+          IMAGE_TAG_INPUT: ${{ inputs.image_tag }}
+        run: |
+          version="$(sed -n 's/^version[[:space:]]*=[[:space:]]*//p' gradle.properties | tr -d '[:space:]')"
+          if [ -z "$version" ]; then
+            echo "::error::No version= line in gradle.properties"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=${IMAGE_TAG_INPUT:-${version}-${GITHUB_SHA::7}}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to the container registry
+        # bootBuildImage has no command-line options for registry credentials; when none are configured in
+        # boot/build.gradle.kts it falls back to ~/.docker/config.json, which this step writes. For ECR or
+        # Artifact Registry use the OIDC-derived login instead (aws-actions/amazon-ecr-login, or
+        # `gcloud auth configure-docker`) and drop the two REGISTRY_* secrets.
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ vars.IMAGE_REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push the container image
+        # bootBuildImage is the Gradle counterpart of spring-boot:build-image — Cloud Native Buildpacks, layered
+        # image, no Dockerfile. --imageName/--publishImage are the plugin's own command-line options.
+        run: |
+          ./gradlew :boot:bootBuildImage -x test -x integrationTest \
+            --imageName=${{ vars.IMAGE_REPOSITORY }}:${{ steps.meta.outputs.tag }} \
+            --publishImage

@@ -1,0 +1,11 @@
+<configuration>
+  <inputSpec>${maven.multiModuleProjectDirectory}/apis/rest-client/<name>/<name>-api.yaml</inputSpec>
+  <generatorName><generator></generatorName>
+  <apiPackage><base>.infrastructure.clients.<name>.generated.api</apiPackage>
+  <modelPackage><base>.infrastructure.clients.<name>.generated.model</modelPackage>
+  <configOptions>
+    <useJakartaEe>true</useJakartaEe>
+    <openApiNullable>false</openApiNullable>
+    <serializableModel>true</serializableModel>
+  </configOptions>
+</configuration>

@@ -1,0 +1,50 @@
+{{!--
+  Override of the nav-tree partial of ui-bundle.zip (the original is unchanged except for the marked lines).
+  It emits only the levels a reader needs, so the nav does not repeat the whole subtree of every section in every
+  page (that made guide pages over 1 MB). The child list of an entry is rendered only when
+    - the entry is at a depth up to site.keys.nav_expand_depth (default 1: the groups and the sections are listed), or
+    - it contains the current page, or
+    - its parent opened its children (an untitled list wrapper at depth 0, or a group titled in the comma-separated
+      site.keys.nav_open_groups, default none), or
+    - it is a text-only group heading (children and no url): it has no page of its own, so its children are always
+      emitted, with a toggle, collapsed unless it is on the path to the current page.
+  The two playbook keys are written in snake_case in the playbook and read here in camelCase, because Antora camelCases
+  the keys of `site.keys` (navOpenGroups, navExpandDepth).
+  All of this is computed once per entry by the nav-item-state helper (helpers/nav-item-state.js).
+  Pruned entries always have a url: readers reach their subtree through the entry's own link (its index page), so
+  never prune an entry that has no url. Other subtrees are not in the HTML (and get no toggle button).
+  The bundle's toggle buttons and the "toggle all" button keep working because they only toggle the is-active class that
+  is rendered here. The entries on the path to the current page are rendered with is-active, so the ancestors of the
+  current page are open.
+  The marker comment inside every list lets scripts/site-metrics/measure.mjs tell this override from the bundle's
+  own partial (both write data-depth).
+  With the defaults and a small nav this renders the same as the bundle, so the override is safe on any site.
+--}}
+{{#if navigation.length}}
+<ul class="nav-list">
+  <!-- nav-tree override -->
+  {{#each navigation as |item|}}
+  {{!-- open and expand state computed once per entry (see the header comment and the helper) --}}
+  {{#with (nav-item-state item ../level ../open @root.page.url @root.site.keys.navOpenGroups @root.site.keys.navExpandDepth) as |s|}}
+  <li class="nav-item{{#if s.current}} is-current-page{{/if}}{{#if s.active}} is-active{{/if}}" data-depth="{{s.depth}}">
+    {{#if item.content}}
+    {{#if s.toggle}}
+    <button class="nav-item-toggle"></button>
+    {{/if}}
+    {{#if item.url}}
+    <a class="nav-link" href="
+      {{~#if (eq item.urlType 'internal')}}{{{relativize item.url}}}
+      {{~else}}{{{item.url}}}{{~/if}}">{{{item.content}}}</a>
+    {{else}}
+    <span class="nav-text">{{{item.content}}}</span>
+    {{/if}}
+    {{/if}}
+{{!-- emit the child list only when needed; an untitled wrapper and the groups in nav_open_groups open their children --}}
+{{#if s.expand}}
+{{> nav-tree navigation=item.items level=s.childLevel open=s.openChildren}}
+{{/if}}
+  </li>
+  {{/with}}
+  {{/each}}
+</ul>
+{{/if}}

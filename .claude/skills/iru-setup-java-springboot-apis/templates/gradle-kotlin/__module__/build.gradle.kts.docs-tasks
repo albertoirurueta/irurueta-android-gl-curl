@@ -1,0 +1,54 @@
+val generateRestServerV1Docs =
+    tasks.register<GenerateTask>("generateRestServerV1Docs") {
+        group = "documentation"
+        description = "OpenAPI html2 reference for apis/rest-server/<service>-api-v1.yaml"
+        generatorName.set("html2")
+        inputSpec.set(apis.file("rest-server/<service>-api-v1.yaml").asFile.absolutePath)
+        outputDir.set(layout.buildDirectory.dir("generated-docs/rest-server/v1").get().asFile.absolutePath)
+    }
+
+// protoc-gen-doc writes beside the other protoc outputs; copy it to the published location.
+val generateGrpcServerDocs =
+    tasks.register<Copy>("generateGrpcServerDocs") {
+        group = "documentation"
+        description = "protoc-gen-doc HTML reference for apis/grpc-server"
+        dependsOn("generateProto")
+        from(layout.buildDirectory.dir("generated/sources/proto/main/doc"))
+        into(layout.buildDirectory.dir("generated-docs/grpc-server/v1"))
+    }
+
+// The npm toolchains of Steps 3b/6b, unchanged, driven by Exec instead of frontend-maven-plugin. They use the
+// Node on PATH (CI's actions/setup-node); -PapiDocsNpmSkip=true is the offline escape hatch (CI must not use it).
+val apiDocsNpmSkip = providers.gradleProperty("apiDocsNpmSkip").map { it.toBoolean() }.orElse(false)
+val installAsyncApiToolchain =
+    tasks.register<Exec>("installAsyncApiToolchain") {
+        onlyIf { !apiDocsNpmSkip.get() }
+        workingDir(apis.dir("messaging/docs"))
+        commandLine("npm", "ci", "--no-audit", "--no-fund")
+    }
+val generateAsyncApiDocs =
+    tasks.register<Exec>("generateAsyncApiDocs") {
+        group = "documentation"
+        description = "AsyncAPI HTML reference for apis/messaging"
+        onlyIf { !apiDocsNpmSkip.get() }
+        dependsOn(installAsyncApiToolchain)
+        workingDir(apis.dir("messaging/docs"))
+        environment("ASYNCAPI_METRICS_CONFIG_PATH", apis.file("messaging/docs/.asyncapi-analytics").asFile.absolutePath)
+        val spec = apis.file("messaging/<service>-async-api-v1.yaml").asFile.absolutePath
+        val out = layout.buildDirectory.dir("generated-docs/messaging/v1").get().asFile.absolutePath
+        commandLine(
+            "sh", "-c",
+            "npx asyncapi validate '$spec' && npx asyncapi generate fromTemplate '$spec' @asyncapi/html-template " +
+                "-o '$out' --force-write -p singleFile=true",
+        )
+    }
+// generateGraphqlDocs: the same shape — an installGraphqlDocsToolchain Exec (`npm ci` in apis/graphql-server/docs),
+// then `npx spectaql spectaql-v1.yml --target-dir <out>` && `node build-voyager.mjs <sdl> <out>/voyager <title>`
+// with <out> = build/generated-docs/graphql-server/v1 (omit the Voyager half if it wasn't wanted).
+
+val generateApiDocs =
+    tasks.register("generateApiDocs") {
+        group = "documentation"
+        description = "Every API documentation generator in this module"
+        dependsOn(generateRestServerV1Docs /* , generateGrpcServerDocs, generateAsyncApiDocs, generateGraphqlDocs */)
+    }

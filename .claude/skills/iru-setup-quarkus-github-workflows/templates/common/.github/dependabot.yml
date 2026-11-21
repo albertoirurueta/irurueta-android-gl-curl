@@ -1,0 +1,33 @@
+version: 2
+updates:
+  - package-ecosystem: maven               # Gradle: gradle (reads build.gradle.kts, settings, libs.versions.toml, gradle.properties)
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      build-dependencies:
+        patterns: [ "*" ]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions-dependencies:
+        patterns: [ "*" ]
+
+  # image-builder: docker only — keeps the Dockerfile's base image current (Jib's base image is a Quarkus default
+  # that moves with the platform).
+  - package-ecosystem: docker
+    directory: /<app-dir>/src/main/docker
+    schedule:
+      interval: weekly
+
+  # Only when docs/package-lock.json exists — the Antora toolchain.
+  - package-ecosystem: npm
+    directory: /docs
+    schedule:
+      interval: weekly
+    groups:
+      docs-dependencies:
+        patterns: [ "*" ]

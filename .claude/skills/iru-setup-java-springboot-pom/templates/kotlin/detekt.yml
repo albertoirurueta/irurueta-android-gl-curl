@@ -1,0 +1,41 @@
+  # detekt configuration, layered over detekt's default ruleset (buildUponDefaultConfig: true): only deviations
+  # from the defaults belong here. maxIssues: 0 makes any finding fail the build, like Checkstyle/PMD/SpotBugs do
+  # for the Java services.
+  build:
+    maxIssues: 0
+
+  config:
+    validation: true
+    warningsAsErrors: false
+
+  complexity:
+    LongParameterList:
+      # Spring constructors injecting several collaborators, data classes mapping wide DTOs.
+      constructorThreshold: 10
+      ignoreDefaultParameters: true
+      ignoreAnnotated: ['ConfigurationProperties']
+    TooManyFunctions:
+      excludes: ['**/test/**', '**/generated/**']
+
+  naming:
+    FunctionNaming:
+      # Backtick test names (`returns 404 when missing`) are the Kotlin testing convention.
+      excludes: ['**/test/**']
+
+  performance:
+    SpreadOperator:
+      # `runApplication<App>(*args)` in the Spring Boot main function is the one idiomatic spread.
+      excludes: ['**/*Application.kt']
+
+  style:
+    MaxLineLength:
+      maxLineLength: 140
+    MagicNumber:
+      excludes: ['**/test/**']
+      ignorePropertyDeclaration: true
+      ignoreAnnotation: true
+    ReturnCount:
+      max: 3
+    UnusedPrivateMember:
+      # Reflection-driven members look unused to static analysis.
+      ignoreAnnotated: ['Bean', 'EventListener', 'Scheduled', 'KafkaListener']

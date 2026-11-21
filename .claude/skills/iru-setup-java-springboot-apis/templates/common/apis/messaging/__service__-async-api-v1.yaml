@@ -1,0 +1,41 @@
+asyncapi: 3.1.0
+info:
+  title: <Service> Events API
+  version: 1.0.0
+  description: Events this service publishes and consumes.
+servers:
+  kafka:
+    host: <broker-host>:9092
+    protocol: kafka
+    description: Kafka broker; schemas resolve through the Confluent Schema Registry.
+channels:
+  orderCreated:
+    # `address` is the real topic name — it must match the
+    # `spring.cloud.stream.bindings.<binding>.destination` value, or the documentation
+    # describes a topic that doesn't exist. The channel *key* is just an internal id.
+    address: order.created.v1
+    description: Order lifecycle events.
+    messages:
+      OrderCreated:
+        $ref: '#/components/messages/OrderCreated'
+operations:
+  sendOrderCreated:
+    # In AsyncAPI 3 the action is from THIS service's point of view:
+    # `send` = this service produces it, `receive` = this service consumes it.
+    action: send
+    summary: Publish an order-created event.
+    channel:
+      $ref: '#/channels/orderCreated'
+    messages:
+      - $ref: '#/channels/orderCreated/messages/OrderCreated'
+components:
+  messages:
+    OrderCreated:
+      name: OrderCreated
+      title: Order created
+      contentType: application/avro
+      payload:
+        # Reference the .avsc, never restate it. One source of truth for the payload.
+        schemaFormat: application/vnd.apache.avro;version=1.9.0
+        schema:
+          $ref: './order-created-v1.avsc'

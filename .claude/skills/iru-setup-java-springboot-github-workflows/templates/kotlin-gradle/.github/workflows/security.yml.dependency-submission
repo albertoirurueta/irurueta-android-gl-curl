@@ -1,0 +1,19 @@
+     dependency-submission:
+       name: Submit Gradle dependency graph
+       # Needs contents: write, which a pull request from a fork never gets — skipped there.
+       if: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
+       runs-on: ubuntu-latest
+       permissions:
+         contents: write
+       steps:
+         - name: Check out code
+           uses: actions/checkout@v7
+         - name: Set up JDK <java-version>
+           uses: actions/setup-java@v6
+           with:
+             distribution: temurin
+             java-version: <java-version>
+         - name: Generate and submit dependency graph
+           uses: gradle/actions/dependency-submission@v6
+           with:
+             cache-provider: basic

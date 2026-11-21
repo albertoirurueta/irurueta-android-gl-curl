@@ -1,0 +1,12 @@
+      <dependency>
+        <groupId>io.mockk</groupId>
+        <artifactId>mockk-jvm</artifactId>   <!-- not io.mockk:mockk: that one is a Gradle-metadata-only umbrella -->
+        <version>${mockk.version}</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>com.ninja-squad</groupId>
+        <artifactId>springmockk</artifactId>
+        <version>${springmockk.version}</version>
+        <scope>test</scope>
+      </dependency>

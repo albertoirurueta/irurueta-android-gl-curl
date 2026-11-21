@@ -1,0 +1,61 @@
+= Page navigation
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+== Current page
+
+`currentIndex` is the zero based index of the page displayed on the right side. For instance, when it is `4`, the right
+page shows page `4` on its front, and the left page shows page `3` (flipped over). The user changes it by flipping pages
+with a finger; your code can change it with:
+
+[cols="1,3",options="header"]
+|===
+|Method |Behavior
+
+|`setCurrentIndex(index)`
+|Displays the page immediately, without animation.
+
+|`setSmoothCurrentIndex(index)`
+|Animates a single page flip towards the left (higher index) or the right (lower index) that lands on the target page,
+even when it is not adjacent. The animation lasts `pageJumpDurationTime` milliseconds.
+|===
+
+Both clamp the index to the available pages: negative values become `0`, and values beyond the end become `pageCount`
+when `allowLastPageCurl` is `true`, or `pageCount - 1` otherwise.
+
+[source,kotlin]
+----
+include::example$navigation.kt[]
+----
+
+[#listeners]
+== Listeners
+
+[source,kotlin]
+----
+include::example$listeners.kt[]
+----
+
+* `CurrentIndexChangedListener.onCurrentIndexChanged` is called on the main thread once the visible page has changed,
+  after a flip or a `setCurrentIndex` call.
+* `PageClickListener.onPageClick` is called when the user taps the view. Return `true` if the tap was handled.
+* `SizeChangedObserver.onSizeChanged` is called when the view size changes (see
+  xref:usage.adoc#size[Reacting to size changes]).
+
+`curlState` tells whether a page is being flipped: `CURL_NONE`, `CURL_LEFT` (the left page is being flipped back) or
+`CURL_RIGHT` (the right page is being flipped forward).
+
+== One or two pages
+
+[source,kotlin]
+----
+include::example$viewMode.kt[]
+----
+
+* `SHOW_ONE_PAGE` (default): the right page fills the area inside the margins, and the left page is placed just
+  outside it, to the left, so flipped pages leave the area towards the left.
+* `SHOW_TWO_PAGES`: the area is split in a left and a right page, like an open book.
+* `renderLeftPage = false` skips drawing the left page, which is useful when it would not be visible anyway.
+* `allowLastPageCurl` controls whether the last page can be flipped, leaving an empty right side.
+
+Next: xref:appearance.adoc[Appearance and animation].

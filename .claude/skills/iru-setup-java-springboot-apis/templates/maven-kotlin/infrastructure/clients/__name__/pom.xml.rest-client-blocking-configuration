@@ -1,0 +1,21 @@
+<configuration>
+  <inputSpec>${maven.multiModuleProjectDirectory}/apis/rest-client/<name>/<name>-api.yaml</inputSpec>
+  <generatorName>kotlin</generatorName>
+  <library>jvm-spring-restclient</library>
+  <output>${project.build.directory}/generated-sources/openapi-client-<name></output>
+  <packageName><base>.infrastructure.clients.<name>.generated</packageName>
+  <apiPackage><base>.infrastructure.clients.<name>.generated.api</apiPackage>
+  <modelPackage><base>.infrastructure.clients.<name>.generated.model</modelPackage>
+  <generateApiTests>false</generateApiTests>
+  <generateModelTests>false</generateModelTests>
+  <generateApiDocumentation>false</generateApiDocumentation>
+  <generateModelDocumentation>false</generateModelDocumentation>
+  <configOptions>
+    <sourceFolder>src/main/kotlin</sourceFolder>
+    <serializationLibrary>jackson</serializationLibrary>
+    <useSpringBoot4>true</useSpringBoot4>
+    <useJackson3>true</useJackson3>
+    <omitGradleWrapper>true</omitGradleWrapper>
+    <serializableModel>true</serializableModel>
+  </configOptions>
+</configuration>

@@ -1,0 +1,14 @@
+{
+  "name": "<service>-asyncapi-docs",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AsyncAPI documentation toolchain. Not published; not a Maven module.",
+  "dependencies": {
+    "@asyncapi/cli": "<latest 6.x>",
+    "@asyncapi/html-template": "<latest 3.x>"
+  },
+  "overrides": {
+    "_comment": "@asyncapi/generator 3.4.0 depends on @asyncapi/generator-hooks 0.1.1, which was never published to npm; without this override `npm install` fails with ETARGET. Drop it once the upstream dependency resolves.",
+    "@asyncapi/generator-hooks": "0.1.0"
+  }
+}

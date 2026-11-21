@@ -1,35 +1,23 @@
-# This is a basic workflow to help you get started with Actions
+name: Release
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the main branch
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-  # Allows you to run this workflow manually from the Actions tab
+  release:
+    types: [released]
   workflow_dispatch:
 
 permissions:
   checks: write
   pull-requests: write
   contents: write
+  security-events: write   # required by github/codeql-action/upload-sarif (the Lint SARIF upload steps below)
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
+    name: Build and execute tests
     runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:      
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - name: checkout
-        uses: actions/checkout@v4
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -39,11 +27,16 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Setup java
-        uses: actions/setup-java@v2
+      - name: Set up JDK 21
+        uses: actions/setup-java@v6
         with:
-          distribution: 'temurin' # See 'Supported distributions' for available options
-          java-version: '17'
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          dependency-graph: generate-and-submit
 
       - name: Run tests
         uses: reactivecircus/android-emulator-runner@v2
@@ -52,6 +45,7 @@ jobs:
           target: google_apis
           arch: x86_64
           script: ./gradlew clean test connectedAndroidTest lint lib:dokkaGenerate
+
       - name: Publish test results
         uses: EnricoMi/publish-unit-test-result-action@v2
         if: (!cancelled())
@@ -61,24 +55,119 @@ jobs:
             app/build/outputs/androidTest-results/**/*.xml
             lib/build/test-results/**/*.xml
             lib/build/outputs/androidTest-results/**/*.xml
-      - name: Convert unit tests coverage results
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: |
+            .ui-screenshots/
+            */build/outputs/connected_android_test_additional_output/**/ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # Converts the raw .exec file AGP writes for lib (enableUnitTestCoverage = true) with the vendored
+      # jacoco-0.8.13 CLI into the XML report lib's sonar block reads
+      # (build/reports/coverage/test/debug/report.xml).
+      - name: Convert unit tests coverage results (vendored jacococli.jar fallback)
         run: |
-          mkdir lib/build/reports/coverage/test || true
-          java -jar jacoco-0.8.13/lib/jacococli.jar report lib/build/jacoco/testReleaseUnitTest.exec --classfiles lib/build/tmp/kotlin-classes/debug --sourcefiles lib/src/main/java --html lib/build/reports/coverage/test || true
-          java -jar jacoco-0.8.13/lib/jacococli.jar report lib/build/jacoco/testReleaseUnitTest.exec --classfiles lib/build/tmp/kotlin-classes/debug --sourcefiles lib/src/main/java --xml lib/build/reports/coverage/test/report.xml || true
-      - name: Send to Sonarqube
+          mkdir -p lib/build/reports/coverage/test/debug || true
+          java -jar jacoco-0.8.13/lib/jacococli.jar report \
+            lib/build/outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec \
+            --classfiles lib/build/tmp/kotlin-classes/debug \
+            --sourcefiles lib/src/main/java \
+            --xml lib/build/reports/coverage/test/debug/report.xml || true
+
+      - name: Upload lint SARIF results
+        if: (!cancelled())
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: lib/build/reports/lint-results-debug.sarif
+          category: android-lint-lib
+
+      - name: Upload app lint SARIF results
+        if: (!cancelled())
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: app/build/reports/lint-results-debug.sarif
+          category: android-lint-app
+
+      - name: Run SonarCloud analysis
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: ./gradlew :lib:sonar
-      - name: Deploy to GitHub Pages
-        if: success()
-        uses: crazy-max/ghaction-github-pages@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
         with:
-          target_branch: gh-pages
-          build_dir: lib/build/dokka/html
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge Dokka API docs into the Antora site
+        run: |
+          touch ./docs/build/site/.nojekyll
+          mkdir -p ./docs/build/site/api
+          cp -r ./lib/build/dokka/html/. ./docs/build/site/api/
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into build/site.
+      # - name: Check site size
+      #   working-directory: docs
+      #   run: |
+      #     size=$(du -sk build/site | cut -f1)
+      #     echo "build/site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./docs/build/site
+
+      - name: Release build
+        run: ./gradlew :lib:assembleRelease
+
+      - name: Publish to Maven Central
+        run: ./gradlew lib:publishAndReleaseToMavenCentral --no-configuration-cache
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_MEMORY_KEY_ID }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
 
-
-
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

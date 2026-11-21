@@ -1,0 +1,22 @@
+<?php
+// Taint annotations for the WordPress escaping/sanitizing API (read by Psalm only, never loaded by PHP).
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function esc_html($text) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function esc_attr($text) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function esc_textarea($text) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function esc_html__($text, $domain = 'default') {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function esc_attr__($text, $domain = 'default') {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes @psalm-taint-escape ssrf */ function esc_url($url, $protocols = null, $_context = 'display') {}
+/** @psalm-taint-escape ssrf @psalm-taint-escape header */ function esc_url_raw($url, $protocols = null) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function wp_kses_post($data) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function wp_kses($content, $allowed_html, $allowed_protocols = array()) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes @psalm-taint-escape sql */ function sanitize_text_field($str) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes @psalm-taint-escape sql */ function sanitize_key($key) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes @psalm-taint-escape sql */ function absint($maybeint) {}
+/** @psalm-taint-escape html @psalm-taint-escape has_quotes */ function wp_json_encode($value, $flags = 0, $depth = 512) {}
+/** @psalm-pure */ function wp_unslash($value) { return $value; }
+class wpdb {
+    /** @psalm-taint-sink sql $query */
+    public function query($query) {}
+    /** @psalm-taint-escape sql */
+    public function prepare($query, ...$args) {}
+}

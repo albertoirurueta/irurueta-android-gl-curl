@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [ <stable-branch> ]
+  pull_request:
+    branches: [ <stable-branch> ]
+  workflow_dispatch:
+
+permissions:
+  checks: write
+  pull-requests: write
+  contents: write
+  security-events: write   # required by github/codeql-action/upload-sarif (the Lint SARIF upload steps below)
+
+jobs:
+  build:
+    name: Build and execute tests
+    runs-on: ubuntu-latest
+    steps:
+      # ... identical to develop.yml's `build` job steps in Step 4, up to and including the
+      # `deploy-docs`-feeding `Upload Pages artifact` step (or `Upload docs artifact` when pages: no) — NO
+      # publish/release step here, that only happens in publish.yml below ...
+
+  # Same deploy-docs job as Step 4's develop.yml (flavor: library, pages: yes only).

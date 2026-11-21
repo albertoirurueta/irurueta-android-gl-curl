@@ -1,0 +1,222 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android release bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      # Only when package-manager: pnpm
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+
+      - name: Install dependencies
+        run: <install-command>
+
+      - name: Set up JDK <rn-java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '<rn-java-version>'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      # distribution: none only — proves the release variant (JS bundle + Hermes bytecode + every ABI) builds.
+      # The template's release build type signs with the debug keystore, so this AAB is NOT uploadable to Play;
+      # drop this step, and keep the signed block below, when distribution is internal/store
+      - name: Build release bundle (debug-signed, not distributable)
+        working-directory: android
+        run: ./gradlew bundleRelease
+
+      # Omit from here to the Google Play upload if distribution: none. The keystore is written outside the
+      # checkout ($RUNNER_TEMP) so it can never be committed or uploaded as an artifact by accident
+      - name: Decode Android upload keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+
+      # The Android Gradle Plugin's injected-signing properties (what Android Studio's "Generate Signed Bundle"
+      # passes) override whatever signingConfig android/app/build.gradle assigns to the release build type — the
+      # template's signingConfigs.debug or a project-specific signingConfigs.release — so build.gradle needs no
+      # CI-specific edits and the passwords never touch gradle.properties
+      - name: Build signed release bundle
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/release.keystore" \
+            -Pandroid.injected.signing.store.password="$ANDROID_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_KEY_PASSWORD"
+
+      # <play-track>: `internal` for distribution: internal, `production` for distribution: store
+      - name: Upload to Google Play
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: <android-package-name>
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: <play-track>
+
+      - name: Upload AAB
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-release.aab
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
+  ios:
+    name: iOS archive
+    runs-on: <macos-runner>
+    # CocoaPods aborts with Encoding::CompatibilityError under a non-UTF-8 locale
+    env:
+      LANG: en_US.UTF-8
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: <xcode-version>
+
+      # Only when package-manager: pnpm
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Set up Node <node-version>
+        uses: actions/setup-node@v7
+        with:
+          node-version: <node-version>
+          cache: <package-manager>
+
+      - name: Install dependencies
+        run: <install-command>
+
+      - name: Set up Ruby and the Gemfile's CocoaPods
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '<ruby-version>'
+          bundler-cache: true
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v6
+        with:
+          path: ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: ${{ runner.os }}-pods-
+
+      - name: Install pods
+        working-directory: ios
+        run: bundle exec pod install
+
+      # distribution: none only — compiles the Release configuration (JS bundle included) with signing disabled;
+      # nothing distributable comes out of it. Drop this step, and keep the signed block below, otherwise
+      - name: Archive (unsigned)
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild -workspace <ios-workspace>.xcworkspace -scheme <ios-scheme> -configuration Release archive \
+            -destination 'generic/platform=iOS' -archivePath build/<ios-scheme>.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO | xcbeautify
+
+      # Omit from here to the end if distribution: none. Decodes the base64 API key once into a file (for
+      # xcodebuild) and into a multi-line env var (the TestFlight action's api-private-key takes the raw .p8
+      # content, not a path) — same step as iru-setup-swift-github-workflows
+      - name: Write the App Store Connect API key
+        env:
+          API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+        run: |
+          echo "$API_KEY_BASE64" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
+          {
+            echo "APP_STORE_CONNECT_API_PRIVATE_KEY<<EOF"
+            cat "$RUNNER_TEMP/AuthKey.p8"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      # Cloud-managed automatic signing: -allowProvisioningUpdates + the API key let xcodebuild create/fetch the
+      # distribution certificate and App Store profile itself. The template project sets no DEVELOPMENT_TEAM, so
+      # it is passed here
+      - name: Archive (signed)
+        working-directory: ios
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+        run: |
+          set -o pipefail
+          xcodebuild -workspace <ios-workspace>.xcworkspace -scheme <ios-scheme> -configuration Release archive \
+            -destination 'generic/platform=iOS' -archivePath build/<ios-scheme>.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$API_KEY_ID" \
+            -authenticationKeyIssuerID "$API_ISSUER_ID" \
+            CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=<team-id> | xcbeautify
+
+      - name: Write ExportOptions.plist
+        working-directory: ios
+        run: |
+          cat > ExportOptions.plist <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>teamID</key>
+            <string><team-id></string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Export IPA
+        working-directory: ios
+        env:
+          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive -archivePath build/<ios-scheme>.xcarchive -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
+            -authenticationKeyID "$API_KEY_ID" \
+            -authenticationKeyIssuerID "$API_ISSUER_ID"
+
+      # distribution: internal and store alike — TestFlight is where every App Store build lands first;
+      # submitting it for App Review (store) stays a manual App Store Connect step
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: ios/build/export/<ios-scheme>.ipa
+          issuer-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          api-key-id: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          api-private-key: ${{ env.APP_STORE_CONNECT_API_PRIVATE_KEY }}
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-release.ipa
+          path: ios/build/export/*.ipa

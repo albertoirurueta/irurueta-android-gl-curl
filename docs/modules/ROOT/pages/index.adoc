@@ -1,0 +1,117 @@
+= Irurueta Android GL Curl
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+*irurueta-android-gl-curl* is an Android library that displays pages that can be flipped like the pages of a paper
+book, with a 3D page curl effect rendered with OpenGL ES. Pages are fed as bitmaps by a page provider, and the user
+flips them by dragging a finger across the view.
+
+image::video.gif[Demo of CurlTextureView: images flipped like the pages of a book over a title text view,width=304]
+
+The main view, `CurlTextureView`, extends `GLTextureView` (a `TextureView` based OpenGL view from
+https://github.com/albertoirurueta/irurueta-android-glutils[irurueta-android-glutils]). Unlike a `GLSurfaceView`, a
+`TextureView` belongs to the regular view hierarchy, so the page curl view can be composed with other views: it has a
+transparent background, it can be placed on top of or below other views, and it can be translucent, moved, scaled,
+rotated or animated with regular view properties. In the demo above, the title is a plain `TextView` placed behind the
+pages.
+
+The page curl implementation is based on https://github.com/harism/android-pagecurl[harism/android-pagecurl].
+
+== Features
+
+* Realistic 3D page curl that follows the finger, with shadows under and over the curl.
+* Pages provided on demand through a `PageProvider`, with independent textures and blend colors for the front and
+  back side of each page.
+* One page or two pages side by side (`SHOW_ONE_PAGE` / `SHOW_TWO_PAGES`).
+* Programmatic navigation, with or without animation (`setCurrentIndex` / `setSmoothCurrentIndex`).
+* Page change and page click listeners.
+* Pixel or proportional margins around the pages, and a configurable background (clear) color.
+* Tunable mesh: curl smoothness, shadow colors, brightness close to the curl, and development aids to display the
+  polygon outlines and the curl position.
+* Frames are rendered only when something changes (`RENDER_MODE_WHEN_DIRTY`), so an idle view does not use the GPU.
+
+== Two views
+
+The library contains two views with the same API:
+
+[cols="1,3",options="header"]
+|===
+|View
+|Description
+
+|`CurlTextureView`
+|Extends `GLTextureView`. Part of the normal view hierarchy: supports transparency, view animations and composition
+with other views. *Recommended* for most uses.
+
+|`CurlGLSurfaceView`
+|Extends `GLSurfaceView`. Draws on a separate surface outside the view hierarchy, so it cannot be animated or blended
+with other views like a regular view, but it has slightly better performance.
+|===
+
+See xref:usage.adoc#choosing[Choosing a view] for details. The rest of this documentation uses `CurlTextureView`;
+everything applies to `CurlGLSurfaceView` too.
+
+== Core concepts
+
+[mermaid]
+....
+flowchart LR
+    A["Activity / Fragment"] -->|"pageProvider, properties"| V["CurlTextureView (GLTextureView)"]
+    V -->|"touch and animations: curl position"| R["CurlRenderer"]
+    V -->|"updatePage(page, width, height, index, backIndex)"| P["PageProvider (your code)"]
+    P -->|"bitmaps and colors"| C["CurlPage"]
+    C -->|"textures"| M["CurlMesh (left, right and curl pages)"]
+    M --> R
+    R --> G["OpenGL ES"]
+    V -.->|"CurrentIndexChangedListener, PageClickListener"| A
+....
+
+* The view keeps three page meshes: the static left and right pages, and the page being curled.
+* When a page needs content, the view calls your `PageProvider.updatePage`, which fills a `CurlPage` with bitmaps (and
+  optionally blend colors) for its front and back sides. See xref:pages.adoc[Pages and textures].
+* `currentIndex` is the zero based index of the page shown on the right side. Flipping the right page towards the left
+  increases it; flipping the left page towards the right decreases it. See xref:navigation.adoc[Page navigation].
+
+== Public API at a glance
+
+[cols="1,3",options="header"]
+|===
+|Type
+|Purpose
+
+|`CurlTextureView`
+|The page curl view, based on a `TextureView`.
+
+|`CurlGLSurfaceView`
+|The same view, based on a `GLSurfaceView`.
+
+|`CurlTextureView.PageProvider`
+|Your implementation: provides the number of pages and fills each `CurlPage` with its content.
+
+|`CurlPage`
+|Holds the textures (bitmaps) and blend colors of the front and back side of a page (`SIDE_FRONT`, `SIDE_BACK`,
+`SIDE_BOTH`).
+
+|`CurlTextureView.CurrentIndexChangedListener`
+|Notified when the visible page changes.
+
+|`CurlTextureView.PageClickListener`
+|Notified when a page is tapped.
+
+|`CurlTextureView.SizeChangedObserver`
+|Notified when the view size changes, for instance to adjust margins.
+
+|`CurlRenderer`, `CurlMesh`
+|Internal OpenGL renderer and page mesh used by the views.
+|===
+
+== Where to go next
+
+* xref:installation.adoc[Installation]: add the dependency to your project.
+* xref:usage.adoc[Usage]: add the view to a layout, provide pages and handle the lifecycle.
+* xref:pages.adoc[Pages and textures]: front and back textures, blend colors and memory.
+* xref:navigation.adoc[Page navigation]: current page, animated jumps, listeners and view modes.
+* xref:appearance.adoc[Appearance and animation]: margins, background, shadows and animation durations.
+* xref:configuration.adoc[Configuration reference]: every property and default value.
+* xref:sample-app.adoc[Sample app] and xref:building.adoc[Building, testing and contributing].
+* xref:reference.adoc[Reference]: API documentation and other links.

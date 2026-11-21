@@ -1,0 +1,212 @@
+name: Build
+
+on:
+  push:
+    branches: [ <integration-branch>, <stable-branch> ] # gitflow; main-only: just [ <stable-branch> ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-test:
+    name: Build, lint, and test
+    runs-on: <runner>
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode <xcode-version>
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '<xcode-version>'
+
+      - name: Install SwiftLint
+        run: command -v swiftlint >/dev/null || brew install swiftlint
+
+      - name: Run SwiftLint
+        run: swiftlint lint --strict --reporter json > swiftlint.json
+
+      - name: Run swift format lint
+        run: swift format lint --strict --recursive Sources Tests
+
+      # Keyed on Package.resolved when the repository commits it (package-resolved: commit), falling back to
+      # Package.swift's hash otherwise — hashFiles() of a missing file is the empty string, so the key still works.
+      - name: Cache SwiftPM build directory
+        uses: actions/cache@v6
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
+      # No separate `swift build` first: --enable-code-coverage changes the compiler flags, so a plain build
+      # followed by a coverage test run compiles the whole package twice on a paid macOS runner. `swift test`
+      # builds everything it needs itself.
+      # <skip-integration-tests>: empty for ci-tests: full, and also for ci-tests: unit when Package.swift
+      # declares no integration-test target (the iru-setup-swift-library scaffold has none). For ci-tests: unit
+      # with such a target (e.g. a `<Name>IntegrationTests` testTarget), `--skip <Name>IntegrationTests`.
+      - name: Build and test with coverage
+        run: swift test --enable-code-coverage --parallel <skip-integration-tests>
+
+      # UI contract: only when the package ships SwiftUI/UIKit/AppKit views whose tests capture screenshots through
+      # the UIScreenshots helper (it writes <repo root>/.ui-screenshots directly under swift test); omit otherwise.
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Export lcov coverage
+        run: |
+          BIN=$(swift build --show-bin-path)
+          TESTBIN=$(find "$BIN" -maxdepth 1 -iname '*.xctest' | head -1)/Contents/MacOS/$(basename "$(find "$BIN" -maxdepth 1 -iname '*.xctest' | head -1)" .xctest)
+          xcrun llvm-cov export -format=lcov "$TESTBIN" -instr-profile "$BIN/codecov/default.profdata" \
+            --ignore-filename-regex='(Tests/|DerivedSources)' > coverage.lcov
+
+      # Omit this whole step if sonar: none (Step 0). A bare SwiftPM package has no .xcodeproj/.xcworkspace for
+      # slather to find (confirmed in this skill's own verification — slather's own design requires one), and
+      # SonarSource's xccov-to-sonarqube-generic.sh (used below for flavor: app) takes an .xcresult bundle, which
+      # `swift test` never produces either — so this step converts the lcov file above directly instead, via a
+      # small vendored python script (Step 4's own note explains why this, not slather/xccov-to-sonarqube, is the
+      # library-flavor default).
+      - name: Convert coverage to SonarQube generic XML
+        if: <sonar != none>
+        run: python3 .github/scripts/lcov_to_sonar_generic.py coverage.lcov > sonarqube-generic-coverage.xml
+
+      # Omit this whole step if sonar: none (Step 0)
+      - name: Run SonarQube analysis
+        if: <sonar != none>
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.host.url=<sonar-host-url>
+
+      # Only on a push landing on <stable-branch> — building and publishing docs on every PR/integration-branch
+      # push is wasted Pages-deploy churn. mkdir -p the parent directory before generate-documentation — confirmed
+      # in this skill's own verification: --allow-writing-to-directory alone does not create missing intermediate
+      # directories, and generate-documentation fails with an NSCocoaErrorDomain "couldn't be moved" error if the
+      # parent doesn't already exist.
+      # --hosting-base-path must be <repo>/api, not <repo>: the archive is merged into the Pages site under
+      # api/ below, and DocC bakes this path into every absolute asset/JS link — with the bare <repo> they'd
+      # resolve to /<repo>/js/… instead of /<repo>/api/js/… and the published API docs render blank.
+      - name: Generate DocC documentation
+        if: github.ref == 'refs/heads/<stable-branch>'
+        run: |
+          mkdir -p docc-output
+          swift package --allow-writing-to-directory docc-output generate-documentation \
+            --target <Name> --transform-for-static-hosting --hosting-base-path <repo>/api \
+            --output-path docc-output
+
+      - name: Set up Node
+        if: github.ref == 'refs/heads/<stable-branch>'
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        if: github.ref == 'refs/heads/<stable-branch>'
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        if: github.ref == 'refs/heads/<stable-branch>'
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        if: github.ref == 'refs/heads/<stable-branch>'
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        if: github.ref == 'refs/heads/<stable-branch>'
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge DocC API docs into the Antora site
+        if: github.ref == 'refs/heads/<stable-branch>'
+        run: |
+          touch ./docs/build/site/.nojekyll
+          mkdir -p ./docs/build/site/api
+          cp -r ./docc-output/. ./docs/build/site/api/
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into build/site.
+      # - name: Check site size
+      #   if: github.ref == 'refs/heads/<stable-branch>'
+      #   working-directory: docs
+      #   run: |
+      #     size=$(du -sk build/site | cut -f1)
+      #     echo "build/site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      # pages: yes only. With pages: no, emit the "Upload docs artifact" step below instead and omit the whole
+      # deploy-docs job (and with it the pages: write / id-token: write permissions only the deploy needs) — the
+      # DocC + Antora build above still runs, validating the docs, but nothing is published.
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/<stable-branch>'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./docs/build/site
+
+      # pages: no only — replaces "Upload Pages artifact" above.
+      - name: Upload docs artifact
+        if: github.ref == 'refs/heads/<stable-branch>'
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site
+          path: ./docs/build/site
+          retention-days: 14
+
+  # Omit this whole job unless the package's own Sources/ are confirmed free of Apple-only imports (Foundation
+  # extras, UIKit/SwiftUI, Combine's Apple-platform-only pieces, etc.) — Step 1's survey. Runs on ubuntu-latest
+  # deliberately (see this skill's intro on macOS-minutes cost) since it needs no Xcode, no SwiftLint, no DocC —
+  # only confirms the package still builds and tests clean under the open-source Swift toolchain.
+  build-test-linux:
+    name: Build and test on Linux
+    runs-on: ubuntu-latest
+    container: swift:<linux-swift-tag>
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Cache SwiftPM build directory
+        uses: actions/cache@v6
+        with:
+          path: .build
+          key: linux-spm-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            linux-spm-
+      # `swift test` builds the package and its tests itself — a preceding `swift build` would just compile twice.
+      - name: Build and test
+        run: swift test --parallel <skip-integration-tests>
+
+  # Omit this whole job when pages: no (Step 0). Omit this whole job if github.ref != refs/heads/<stable-branch> was already the deploy job's own gate above —
+  # this job still needs its own `if:`, since a job-level condition (not a step-level one) is what actually skips
+  # the whole runner spin-up when the push isn't on the stable branch.
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: build-test
+    if: github.ref == 'refs/heads/<stable-branch>'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

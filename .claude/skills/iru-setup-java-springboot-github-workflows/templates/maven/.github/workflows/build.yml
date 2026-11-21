@@ -1,0 +1,243 @@
+name: Build
+
+on:
+  push:
+    branches: [ <integration-branch>, <main-branch> ]
+  pull_request:
+    branches: [ <integration-branch>, <main-branch> ]
+
+# A new push to the same branch/PR makes the previous run obsolete.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test and analyse
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          # Sonar needs full history to attribute issues to blame data.
+          fetch-depth: 0
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven
+
+      # Only when the manifest's frontend: hilla. Must come before the Maven build step below: the Vaadin
+      # plugin's `prepare-frontend`/`build-frontend` goals (bound in <web-module>/pom.xml by
+      # iru-setup-java-springboot-hilla) need Node on PATH, and without a pre-installed Node the plugin falls
+      # back to downloading its own into ~/.vaadin, which adds real time to every uncached run.
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          # The real path npm writes its lock file to: vaadin:prepare-frontend generates package.json/
+          # package-lock.json at the web module's root, next to its pom.xml — never inside
+          # src/main/frontend/. Confirmed by an actual generated project; don't use
+          # src/main/frontend/package-lock.json here.
+          cache-dependency-path: <web-module>/package-lock.json
+
+      - name: Build, unit tests and integration tests
+        # `verify` runs Surefire, then Failsafe against the Testcontainers stack, then the JaCoCo
+        # aggregate report. Docker is available on ubuntu-latest runners, so no extra setup is needed.
+        # -Pproduction -Dvaadin.ci.build=true only apply when frontend: hilla: the production profile builds
+        # the real Vite bundle instead of leaving the frontend in dev-bundle mode, and vaadin.ci.build=true
+        # (confirmed against the plugin's own parameter metadata) makes it run `npm ci` instead of
+        # `npm install` so the committed package-lock.json is never silently rewritten by CI.
+        run: mvn -B -ntp clean verify -Pproduction -Dvaadin.ci.build=true
+
+      # Only when the manifest's frontend: hilla. Must run after the Maven step above, not before: both
+      # vite.config.ts and vitest.config.ts import <web-module>/vite.generated.ts, which itself imports
+      # helper scripts under <web-module>/target/plugins/ — files that exist only once a Maven build has
+      # reached vaadin:prepare-frontend. Running this step first fails on a module-not-found error that has
+      # nothing to do with the frontend tests themselves. Confirmed by an actual local run.
+      - name: Frontend unit tests and coverage
+        working-directory: <web-module>
+        run: |
+          npm ci
+          npx vitest run --coverage
+
+      # Only when frontend: hilla, ci.tests: full, and the web module has a playwright.config.ts (written by
+      # iru-setup-java-springboot-hilla). Runs the Playwright component tests against the standalone Vite gallery
+      # in the same job (no extra runner); captures land in .ui-screenshots/ per the catalog's UI contract.
+      - name: Frontend UI tests
+        working-directory: <web-module>
+        env:
+          CI: "true"
+          UI_SCREENSHOTS_DIR: ${{ github.workspace }}/.ui-screenshots
+        run: |
+          npx playwright install --with-deps chromium
+          npx playwright test
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Static analysis and site report
+        run: mvn -B -ntp site -DskipTests -Djacoco.skip
+
+      - name: Run SonarCloud analysis
+        # Only present at all when the manifest's sonar.mode isn't `none` — see Step 0. Skipped on pull
+        # requests from forks, where SONAR_TOKEN is not available.
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: mvn -B -ntp sonar:sonar -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+
+      - name: Upload test reports
+        # `always()` so a failing build still yields the reports that explain why.
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/**
+            **/target/failsafe-reports/**
+            coverage/target/site/jacoco-aggregate/**
+            <web-module>/coverage/**
+          retention-days: 7
+
+  docs:
+    name: Build and publish documentation
+    needs: build
+    if: github.ref == 'refs/heads/<main-branch>' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven
+
+      - name: Install Node
+        # v7 — confirmed the current major via the live GitHub API at the time of writing, and kept in step
+        # with the `build` job's own Set up Node step (frontend: hilla) so both jobs use one version.
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          # Every npm toolchain in the repository: the Antora site, the AsyncAPI
+          # generators, and the GraphQL ones. Omit any path the repository doesn't have.
+          cache-dependency-path: |
+            docs/package-lock.json
+            apis/messaging/docs/package-lock.json
+            apis/graphql-server/docs/package-lock.json
+
+      - name: Generate API documentation and the Maven site
+        # generate-resources runs the OpenAPI html2 and protoc-gen-doc executions;
+        # `site` produces the Javadoc/Surefire/JaCoCo/Checkstyle/PMD/SpotBugs/JXR reports.
+        # The npm-driven generators (AsyncAPI, GraphQL) are skipped here and run as their
+        # own steps below, so this job doesn't generate them twice; the `build` job above
+        # still exercises the frontend-maven-plugin wiring, because `mvn clean verify`
+        # passes through generate-resources like any other build.
+        run: |
+          mvn -B -ntp clean generate-resources -Dasyncapi.docs.skip=true -Dgraphql.docs.skip=true
+          mvn -B -ntp site -DskipTests -Djacoco.skip
+
+      - name: Generate AsyncAPI documentation
+        # The official AsyncAPI HTML generator, run against the committed toolchain in
+        # apis/messaging/docs — see iru-setup-java-springboot-apis.
+        if: hashFiles('apis/messaging/docs/package.json') != ''
+        working-directory: apis/messaging/docs
+        env:
+          # Committed file with analyticsEnabled=false, so the CLI reports nothing anywhere.
+          ASYNCAPI_METRICS_CONFIG_PATH: .asyncapi-analytics
+        run: |
+          npm ci --no-audit --no-fund
+          out="$GITHUB_WORKSPACE/target/generated-docs/messaging"
+          for spec in ../*-async-api-v*.yaml; do
+            v="$(basename "$spec" .yaml | sed -e 's/.*-async-api-//')"     # v1, v2, ...
+            npx asyncapi validate "$spec"
+            npx asyncapi generate fromTemplate "$spec" @asyncapi/html-template \
+              -o "$out/$v" --force-write -p singleFile=true
+          done
+
+      - name: Generate GraphQL documentation
+        # SpectaQL renders the static reference from the SDL; the small build-voyager.mjs
+        # script renders the interactive schema graph beside it. Both read the SDL directly,
+        # so neither needs a running service or an introspection endpoint in CI.
+        if: hashFiles('apis/graphql-server/docs/package.json') != ''
+        working-directory: apis/graphql-server/docs
+        run: |
+          npm ci --no-audit --no-fund
+          out="$GITHUB_WORKSPACE/target/generated-docs/graphql-server"
+          for sdl in ../*-v*.graphqls; do
+            v="$(basename "$sdl" .graphqls | sed -e 's/.*-\(v[0-9]*\)$/\1/')"      # v1, v2, ...
+            npx spectaql "spectaql-$v.yml" --target-dir "$out/$v"
+            # Drop this line if the Voyager schema graph wasn't wanted.
+            node build-voyager.mjs "$sdl" "$out/$v/voyager" "GraphQL schema $v"
+          done
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. Runs before the API docs are merged below, so only the Antora pages are indexed; move this
+      # step after the merge if the API pages should be searchable.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Merge documentation
+        run: |
+          touch ./docs/build/site/.nojekyll
+          cp -r ./docs/build/site ./doc
+          cp -r ./target/site ./doc/mvn-site
+          # Generated API documentation, published alongside so the Antora pages can link to
+          # it. Every generator in the repository writes under some `target/generated-docs`
+          # — the OpenAPI html2 and protoc-gen-doc executions into their module's, the
+          # AsyncAPI step above into the root one — so copying the *contents* of each such
+          # directory merges rest-server/, grpc-server/ and messaging/ under ./doc/api
+          # without needing to know which module produced which. The result is
+          # doc/api/rest-server/v1/, doc/api/grpc-server/v1/, doc/api/messaging/v1/.
+          mkdir -p ./doc/api
+          while IFS= read -r root; do
+            cp -r "$root"/. ./doc/api/
+          done < <(find . -type d -path '*/target/generated-docs')
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; keep it after the last step that
+      # writes into the site directory.
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk doc | cut -f1)
+      #     echo "site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+
+      - name: Deploy to GitHub Pages
+        if: success()
+        uses: crazy-max/ghaction-github-pages@v5
+        with:
+          target_branch: gh-pages
+          build_dir: ./doc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,169 @@
+= Configuration reference
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+Every property and method below exists with the same name and default in `CurlTextureView` and `CurlGLSurfaceView`.
+Defaults are the constants of the view's `companion object`.
+
+== Properties
+
+[cols="2,1,1,4",options="header"]
+|===
+|Property |Type |Default |Description
+
+|`pageProvider`
+|`PageProvider?`
+|`null`
+|Provides page count and content. Setting it resets `currentIndex` to `0` and redraws.
+
+|`currentIndex`
+|`Int` (read only)
+|`0`
+|Index of the page shown on the right side. Change it with `setCurrentIndex` or `setSmoothCurrentIndex`.
+
+|`curlState`
+|`Int` (read only)
+|`CURL_NONE`
+|`CURL_NONE`, `CURL_LEFT` or `CURL_RIGHT`, depending on the page being flipped.
+
+|`viewMode`
+|`Int`
+|`SHOW_ONE_PAGE`
+|`SHOW_ONE_PAGE` or `SHOW_TWO_PAGES`. Other values are ignored.
+
+|`renderLeftPage`
+|`Boolean`
+|`true`
+|Whether the left page is drawn.
+
+|`allowLastPageCurl`
+|`Boolean`
+|`true` (`ALLOW_LAST_PAGE_CURL`)
+|Whether the last page can be flipped.
+
+|`animationDurationTime`
+|`Int`
+|`300` ms (`ANIMATION_DURATION_MILLIS`)
+|Duration of the animation that completes or reverts a flip when the finger is raised. Must be `>= 0`.
+
+|`pageJumpDurationTime`
+|`Long`
+|`500` ms (`PAGE_JUMP_ANIMATION_DURATION_MILLIS`)
+|Duration of the flip animated by `setSmoothCurrentIndex`. Must be `>= 0`.
+
+|`enableTouchPressure`
+|`Boolean`
+|`false` (`TOUCH_PRESSURE_ENABLED`)
+|Uses touch pressure to change the curl radius. Experimental.
+
+|`currentIndexChangedListener`
+|`CurrentIndexChangedListener?`
+|`null`
+|Notified on the main thread when the visible page changes.
+
+|`pageClickListener`
+|`PageClickListener?`
+|`null`
+|Notified when the view is tapped.
+
+|`sizeChangedObserver`
+|`SizeChangedObserver?`
+|`null`
+|Notified from `onSizeChanged`.
+|===
+
+== Mesh properties
+
+These can only be set while `pageProvider` is `null`; otherwise they throw `IllegalArgumentException`.
+
+[cols="2,1,1,4",options="header"]
+|===
+|Property |Type |Default |Description
+
+|`maxCurlSplitsInMesh`
+|`Int`
+|`10` (`MAX_CURL_SPLITS_IN_MESH`)
+|Maximum number of splits of the curl. Larger is smoother, with more polygons.
+
+|`drawShadowInMesh`
+|`Boolean`
+|`true` (`DRAW_SHADOW_IN_MESH`)
+|Draws drop and self shadows.
+
+|`shadowInnerColorInMesh`
+|`FloatArray`
+|`[0, 0, 0, 0.5]` (`SHADOW_INNER_COLOR_IN_MESH`)
+|RGBA color where the shadow starts. 4 values in `[0, 1]`.
+
+|`shadowOuterColorInMesh`
+|`FloatArray`
+|`[0, 0, 0, 0]` (`SHADOW_OUTER_COLOR_IN_MESH`)
+|RGBA color where the shadow ends. 4 values in `[0, 1]`.
+
+|`colorFactorOffsetInMesh`
+|`Float`
+|`0.3` (`DEFAULT_COLOR_FACTOR_OFFSET_IN_MESH`)
+|Brightness of the texture close to the curl, in `[0, 1]`.
+
+|`drawTextureInMesh`
+|`Boolean`
+|`true` (`DRAW_TEXTURE_IN_MESH`)
+|Draws page textures.
+
+|`drawPolygonOutlinesInMesh`
+|`Boolean`
+|`false` (`DRAW_POLYGON_OUTLINES_IN_MESH`)
+|Development aid: draws polygon outlines.
+
+|`drawCurlPositionInMesh`
+|`Boolean`
+|`false` (`DRAW_CURL_POSITION_IN_MESH`)
+|Development aid: draws the curl position and direction.
+|===
+
+== Methods
+
+[cols="2,4",options="header"]
+|===
+|Method |Description
+
+|`setCurrentIndex(index: Int)`
+|Shows the page immediately. The index is clamped to the available pages.
+
+|`setSmoothCurrentIndex(index: Int)`
+|Animates a page flip that lands on the page. The index is clamped to the available pages.
+
+|`setMargins(left: Int, top: Int, right: Int, bottom: Int)`
+|Margins around the pages, in pixels.
+
+|`setProportionalMargins(left: Float, top: Float, right: Float, bottom: Float)`
+|Margins as fractions of the view width (left, right) and height (top, bottom). `0.1f` is 10%.
+
+|`setBackgroundColor(color: Int)`
+|OpenGL clear color (`0xAARRGGBB`). Transparent by default.
+
+|`onResume()` / `onPause()`
+|Resume and pause the rendering thread. Forward them from the activity or fragment.
+|===
+
+== CurlPage
+
+[cols="2,4",options="header"]
+|===
+|Member |Description
+
+|`setTexture(texture: Bitmap?, side: Int)`
+|Sets the bitmap of `SIDE_FRONT`, `SIDE_BACK` or `SIDE_BOTH`.
+
+|`setColor(color: Int, side: Int)`
+|Sets the blend color of a side. White by default.
+
+|`getColor(side: Int)`
+|Returns the blend color of a side.
+
+|`hasBackTexture`
+|Whether the back side has a texture different from the front side.
+
+|`reset()` / `recycle()`
+|Restore the initial state / recycle the textures. Called by the view before each `updatePage`.
+|===

@@ -1,0 +1,15 @@
+build:
+  maxIssues: 0
+
+style:
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+
+comments:
+  UndocumentedPublicClass:
+    active: true
+  UndocumentedPublicFunction:
+    active: true
+  UndocumentedPublicProperty:
+    active: true

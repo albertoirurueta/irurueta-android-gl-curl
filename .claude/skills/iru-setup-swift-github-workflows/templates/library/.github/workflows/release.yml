@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  release:
+    types: [released]
+  # Only when release-please: yes (Step 0) — the release-please job below runs on this trigger instead.
+  push:
+    branches: [ <stable-branch> ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to verify (e.g. v1.2.0) — a manual dry run has no release event to read it from"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-release:
+    name: Verify the release tag and manifest
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    container: swift:<linux-swift-tag>
+    steps:
+      # No fetch-depth: 0 — nothing in this job reads git history; a shallow checkout of the tagged commit is
+      # all `swift package dump-package` needs.
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      # `github.event.release.tag_name` is empty on workflow_dispatch, so the manual dry run Step 14 recommends
+      # would otherwise always fail the semver check — fall back to the `tag` input.
+      - name: Verify the tag is valid semver
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          python3 -c 'import re,sys; v=sys.argv[1]; sys.exit(0 if re.fullmatch(r"\d+\.\d+\.\d+(-[0-9A-Za-z][0-9A-Za-z.]*)?(\+[0-9A-Za-z][0-9A-Za-z.]*)?", v) else 1)' "$VERSION" \
+            || { echo "::error::Release tag '$TAG' is not a valid semver version"; exit 1; }
+
+      - name: Verify Package.swift still parses
+        run: swift package dump-package >/dev/null
+
+  # Only when release-please: yes (Step 0) — an alternative, automated changelog/version-bump PR path; this
+  # catalog's default release flow is the hand-driven iru-release/iru-swift-bump-version instead (Step 0's note).
+  release-please:
+    name: Open the next release-please PR
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: googleapis/release-please-action@v5
+        with:
+          release-type: simple
+          target-branch: <stable-branch>

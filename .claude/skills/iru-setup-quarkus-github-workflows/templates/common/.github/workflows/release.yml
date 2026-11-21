@@ -1,0 +1,83 @@
+name: Release
+
+on:
+  release:
+    types: [ released ]
+
+permissions:
+  contents: read
+  packages: write                          # GHCR push with GITHUB_TOKEN; other registries: drop it
+
+jobs:
+  image:
+    name: Build and push the container image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the released commit
+        uses: actions/checkout@v7
+
+      - name: Set up JDK <java-version>
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: <java-version>
+          cache: maven                     # Maven only
+      - name: Set up Gradle                # Gradle only
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Compute image coordinates
+        id: image
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          # Registry paths must be lowercase; GitHub owners may not be.
+          echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # jib — Quarkus builds and pushes the image itself (no Docker daemon needed). The released commit was already
+      # tested by build.yml on <stable-branch>, so tests are skipped here.
+      - name: Build and push with Jib
+        env:
+          QUARKUS_CONTAINER_IMAGE_USERNAME: ${{ github.actor }}               # other registry: ${{ secrets.REGISTRY_USERNAME }}
+          QUARKUS_CONTAINER_IMAGE_PASSWORD: ${{ secrets.GITHUB_TOKEN }}       # other registry: ${{ secrets.REGISTRY_PASSWORD }}
+        run: >
+          ./mvnw -B -ntp <app-module>package -DskipTests
+          -Dquarkus.container-image.build=true
+          -Dquarkus.container-image.push=true
+          -Dquarkus.container-image.registry=<registry>
+          -Dquarkus.container-image.group=${{ steps.image.outputs.owner }}
+          -Dquarkus.container-image.name=<artifact-id>
+          -Dquarkus.container-image.tag=${{ steps.image.outputs.version }}
+          -Dquarkus.container-image.additional-tags=latest
+        # Gradle: replace the first line with `./gradlew <app-module>build -x test -x check` (same -D flags).
+
+      # docker — package the fast-jar, then build src/main/docker/Dockerfile.jvm (use these four steps instead of
+      # "Build and push with Jib").
+      - name: Package the application
+        run: ./mvnw -B -ntp <app-module>package -DskipTests        # Maven
+        # run: ./gradlew <app-module>build -x test -x check        # Gradle
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+      - name: Log in to the registry
+        uses: docker/login-action@v4
+        with:
+          registry: <registry>
+          username: ${{ github.actor }}                 # other registry: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.GITHUB_TOKEN }}         # other registry: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: <registry>/${{ steps.image.outputs.owner }}/<artifact-id>
+          tags: |
+            type=raw,value=${{ steps.image.outputs.version }}
+            type=raw,value=latest
+      - name: Build and push with Docker
+        uses: docker/build-push-action@v7
+        with:
+          context: <app-dir>
+          file: <app-dir>/src/main/docker/Dockerfile.jvm
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -1,0 +1,147 @@
+name: Sync
+
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Open sync PR from the released branch into <integration-branch>
+    runs-on: ubuntu-latest
+    if: github.event.release.target_commitish == '<stable-branch>'
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Compute versions and branch names
+        id: versions
+        run: |
+          set -euo pipefail
+          RELEASE_VERSION="${{ github.event.release.tag_name }}"
+          RELEASE_VERSION="${RELEASE_VERSION#v}"
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$RELEASE_VERSION"
+          if [ -z "${MAJOR:-}" ] || [ -z "${MINOR:-}" ] || [ -z "${PATCH:-}" ]; then
+            echo "::error::Release tag '$RELEASE_VERSION' is not in X.Y.Z form; cannot compute the next version."
+            exit 1
+          fi
+
+          NEXT_PATCH=$((PATCH + 1))
+          NEXT_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+          SYNC_BRANCH="sync_${RELEASE_VERSION}"
+
+          echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "next_version=$NEXT_VERSION" >> "$GITHUB_OUTPUT"
+          echo "sync_branch=$SYNC_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if this release was already synced
+        id: guard
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin "${{ steps.versions.outputs.sync_branch }}" >/dev/null 2>&1; then
+            echo "::notice::${{ steps.versions.outputs.sync_branch }} already exists on origin; skipping."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git identity
+        if: steps.guard.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create sync branch from <integration-branch>
+        if: steps.guard.outputs.exists == 'false'
+        run: |
+          git fetch origin <integration-branch> <stable-branch>
+          git checkout -b "${{ steps.versions.outputs.sync_branch }}" "origin/<integration-branch>"
+
+      - name: Merge the released branch into the sync branch
+        id: merge
+        if: steps.guard.outputs.exists == 'false'
+        env:
+          SYNC_BRANCH: ${{ steps.versions.outputs.sync_branch }}
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+        run: |
+          if git merge --no-ff --no-edit \
+              -m "Merge <stable-branch> (${RELEASE_VERSION}) into <integration-branch>" \
+              "origin/<stable-branch>"; then
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            git merge --abort
+            echo "::warning::Merging <stable-branch> (${RELEASE_VERSION}) into <integration-branch> conflicts; opening the sync pull request from the release commit for manual resolution, without bumping the development version."
+            git checkout -B "${SYNC_BRANCH}" "origin/<stable-branch>"
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false'
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.x'
+
+      - name: Bump the development version
+        if: steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false'
+        env:
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+        run: python3 .github/scripts/sync_versions.py
+
+      # Emit only this flavor's/generator's real files — `git add` aborts on the first pathspec that matches
+      # nothing and stages *none* of the others, so one line naming both project.yml and Project.swift (or a
+      # library's version.txt next to an app's manifest) would silently stage nothing and the sync PR would
+      # carry no version bump. flavor: library →
+      - name: Commit the version bump
+        if: steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false'
+        run: |
+          git add version.txt CHANGELOG.md README.md docs/antora.yml docs/modules/ROOT/pages
+          git diff --cached --quiet || git commit -m "Sync ${{ steps.versions.outputs.next_version }}"
+
+      # flavor: app, generator: xcodegen → (generator: tuist — replace project.yml with Project.swift)
+      - name: Commit the version bump
+        if: steps.guard.outputs.exists == 'false' && steps.merge.outputs.conflict == 'false'
+        run: |
+          git add project.yml CHANGELOG.md README.md docs/antora.yml docs/modules/ROOT/pages
+          git diff --cached --quiet || git commit -m "Sync ${{ steps.versions.outputs.next_version }}"
+
+      - name: Push sync branch
+        if: steps.guard.outputs.exists == 'false'
+        run: git push origin "${{ steps.versions.outputs.sync_branch }}"
+
+      - name: Ensure the sync label exists
+        if: steps.guard.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create sync --description "Sync pull request from a release branch back into <integration-branch>" --color 0e8a16 \
+            || gh label list --search sync >/dev/null
+
+      - name: Open pull request into <integration-branch>
+        if: steps.guard.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_BRANCH: ${{ steps.versions.outputs.sync_branch }}
+          RELEASE_VERSION: ${{ steps.versions.outputs.release_version }}
+          NEXT_VERSION: ${{ steps.versions.outputs.next_version }}
+          CONFLICT: ${{ steps.merge.outputs.conflict }}
+        run: |
+          if [ "$CONFLICT" = "true" ]; then
+            TITLE="Sync ${RELEASE_VERSION} (merge conflicts to resolve)"
+            BODY="Merges \`<stable-branch>\` (\`${RELEASE_VERSION}\`) back into \`<integration-branch>\`. The automatic merge conflicted (usually on the version line), so this branch points at the release commit and the development version was **not** bumped. Resolve the conflicts keeping \`<integration-branch>\`'s development version and taking the release's changes otherwise."
+          else
+            TITLE="Sync ${NEXT_VERSION}"
+            BODY="Merges \`<stable-branch>\` back into \`<integration-branch>\` after releasing \`${RELEASE_VERSION}\`, and bumps the development version to \`${NEXT_VERSION}\`."
+          fi
+          gh pr create \
+            --base <integration-branch> \
+            --head "${SYNC_BRANCH}" \
+            --title "${TITLE}" \
+            --body "${BODY}" \
+            --label sync

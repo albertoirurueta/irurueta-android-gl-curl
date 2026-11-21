@@ -1,0 +1,93 @@
+= Building, testing and contributing
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+== Project structure
+
+[cols="1,3",options="header"]
+|===
+|Path |Contents
+
+|`lib/`
+|The library: `CurlTextureView`, `CurlGLSurfaceView`, `CurlPage`, `CurlMesh` and `CurlRenderer`.
+
+|`app/`
+|Sample app, see xref:sample-app.adoc[Sample app].
+
+|`docs/`
+|This Antora documentation site.
+
+|`.github/workflows/`
+|GitHub Actions workflows for CI, releases, version sync and security scans.
+|===
+
+== Requirements
+
+* JDK 17 or later (CI uses JDK 21). The library targets JVM 17.
+* Android SDK with platform 36 (set `sdk.dir` in `local.properties` or the `ANDROID_HOME` environment variable).
+* An emulator or device for instrumented tests.
+
+== Building
+
+[source,shell]
+----
+./gradlew assembleDebug        # build library and sample app
+./gradlew :lib:assembleRelease # build the release AAR
+----
+
+== Testing
+
+[source,shell]
+----
+./gradlew test                 # JVM unit tests (Robolectric)
+./gradlew connectedAndroidTest # instrumented tests, require a device or emulator
+./gradlew lint                 # Android Lint
+----
+
+Unit test coverage is collected because `enableUnitTestCoverage` is enabled for debug builds. CI converts it to a
+JaCoCo XML report and sends it to https://sonarcloud.io/dashboard?id=albertoirurueta_irurueta-android-gl-curl[SonarCloud].
+
+== API documentation
+
+[source,shell]
+----
+./gradlew :lib:dokkaGenerate
+----
+
+The KDoc HTML is generated in `lib/build/dokka/html` and published under `/api/` on GitHub Pages.
+
+== Documentation site
+
+This site is built with https://antora.org[Antora] (Node.js 20 or later):
+
+[source,shell]
+----
+cd docs
+npm ci
+npx antora antora-playbook.yml
+npx pagefind --site build/site
+----
+
+The result is in `docs/build/site`. Search only works when it is served over HTTP, for instance with
+`python3 -m http.server 8090 --directory docs/build/site`.
+
+== Branching model
+
+The repository follows https://nvie.com/posts/a-successful-git-branching-model/[gitflow]:
+
+* `develop` is the integration branch. It carries a `-SNAPSHOT` version, and every push builds, tests, publishes a
+  snapshot to Maven Central and deploys the documentation.
+* `main` only receives releases. Publishing a GitHub release from `main` builds and publishes the release to Maven
+  Central, deploys the documentation, and opens a pull request that merges `main` back into `develop` with the next
+  `-SNAPSHOT` version.
+* Features are developed in `feature/<issue>-<name>` branches created from `develop`, and hotfixes in `hotfix/...`
+  branches created from `main`.
+
+== Contributing
+
+. Create an issue describing the change.
+. Create a `feature/<issue>-<name>` branch from `develop`.
+. Make sure `./gradlew test lint` pass and keep unit test coverage high.
+. Open a pull request against `develop`.
+
+All source files carry the Apache License 2.0 header.

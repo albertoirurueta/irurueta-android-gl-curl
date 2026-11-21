@@ -1,0 +1,78 @@
+= Appearance and animation
+
+NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
+
+== Margins and background
+
+Pages are laid out inside the view, minus its margins. Margins can be set in pixels, or proportionally to the view
+size. The background (OpenGL clear color) is drawn around the pages, and is transparent by default, so views behind
+`CurlTextureView` remain visible:
+
+[source,kotlin]
+----
+include::example$margins.kt[]
+----
+
+Proportional margins are fractions of the view width (left and right) and height (top and bottom). To derive them
+from sizes in pixels or dp, compute them in a `SizeChangedObserver`, as shown in
+xref:usage.adoc#size[Reacting to size changes].
+
+== Shadows and curl mesh
+
+Each page is a mesh of polygons that is split along the curl. Shadows are drawn under the curl (drop shadow) and on the
+curled page itself (self shadow), and the area of the texture close to the curl is darkened.
+
+[source,kotlin]
+----
+include::example$meshAppearance.kt[]
+----
+
+[cols="1,3",options="header"]
+|===
+|Property |Effect
+
+|`maxCurlSplitsInMesh`
+|Maximum number of times the curl is split. Larger values give a smoother curl with more polygons. Default `10`.
+
+|`drawShadowInMesh`
+|Enables shadow rendering. Default `true`.
+
+|`shadowInnerColorInMesh`
+|RGBA color (4 values in `[0, 1]`) where the shadow starts. Default `[0, 0, 0, 0.5]`.
+
+|`shadowOuterColorInMesh`
+|RGBA color (4 values in `[0, 1]`) where the shadow ends. Default `[0, 0, 0, 0]`.
+
+|`colorFactorOffsetInMesh`
+|Brightness of the texture close to the curl, in `[0, 1]`: larger values are lighter, smaller values darker. Default
+`0.3`.
+|===
+
+IMPORTANT: The mesh properties (`maxCurlSplitsInMesh` and every `...InMesh` property) can only be changed while
+`pageProvider` is `null`, and throw `IllegalArgumentException` otherwise. Set them before the page provider.
+
+== Animation
+
+[source,kotlin]
+----
+include::example$animation.kt[]
+----
+
+* `animationDurationTime`: duration, in milliseconds, of the animation that completes or reverts a flip when the finger
+  is raised. Default `300`.
+* `pageJumpDurationTime`: duration, in milliseconds, of the flip animated by `setSmoothCurrentIndex`. Default `500`.
+* `enableTouchPressure`: uses touch pressure to change the curl radius (the harder you press, the flatter the curl).
+  Experimental: results vary between devices, and emulators report a constant pressure. Default `false`.
+
+== Development aids
+
+[source,kotlin]
+----
+include::example$debugMesh.kt[]
+----
+
+`drawPolygonOutlinesInMesh` shows how each page is divided into polygons, `drawCurlPositionInMesh` draws the curl
+position and direction, and `drawTextureInMesh = false` hides the page textures. Like every mesh property, they must be
+set while `pageProvider` is `null`.
+
+Next: xref:configuration.adoc[Configuration reference].

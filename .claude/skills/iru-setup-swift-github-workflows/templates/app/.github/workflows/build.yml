@@ -1,0 +1,482 @@
+name: Build
+
+on:
+  push:
+    # >>> gitflow
+    branches: [ <integration-branch>, <stable-branch> ]
+    # <<< gitflow
+    # >>> main-only
+    branches: [ <stable-branch> ]
+    # <<< main-only
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same ref cancels the run in flight: macOS minutes are expensive.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Linux, every push and pull request — macOS minutes cost ~10x Linux minutes on private repositories.
+  lint:
+    name: Lint — SwiftLint, swift format
+    runs-on: ubuntu-latest
+    container: swift:<linux-swift-tag>
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      # The dynamically linked Linux binary uses the container toolchain's SourceKit (libsourcekitdInProc.so).
+      - name: Install SwiftLint <swiftlint-version>
+        run: |
+          set -euo pipefail
+          if ! command -v curl >/dev/null || ! command -v unzip >/dev/null; then
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends ca-certificates curl unzip >/dev/null
+          fi
+          case "$(uname -m)" in
+            aarch64|arm64) arch=arm64 ;;
+            *) arch=amd64 ;;
+          esac
+          curl -fsSL -o /tmp/swiftlint.zip \
+            "https://github.com/realm/SwiftLint/releases/download/<swiftlint-version>/swiftlint_linux_${arch}.zip"
+          unzip -q -o /tmp/swiftlint.zip swiftlint -d /usr/local/bin
+          swiftlint version
+
+      # .swiftlint.yml (iru-setup-apple-app) includes Targets, Packages/Core/Sources and Packages/Core/Tests.
+      - name: SwiftLint (strict)
+        run: swiftlint lint --strict --reporter github-actions-logging
+      # >>> sonar
+
+      # Generic external-issues JSON for the sonar job (SwiftLint's sonarqube reporter).
+      - name: SwiftLint report for Sonar
+        if: (!cancelled())
+        run: swiftlint lint --quiet --reporter sonarqube > swiftlint-sonar.json || true
+
+      - name: Upload the SwiftLint report
+        if: (!cancelled())
+        uses: actions/upload-artifact@v7
+        with:
+          name: swiftlint-report
+          path: swiftlint-sonar.json
+          retention-days: 7
+      # <<< sonar
+
+      - name: swift format lint
+        run: swift format lint --strict --recursive Targets Packages/Core/Sources Packages/Core/Tests
+
+  # The coverage bar. Packages/Core holds every model/service/view model/controller and is measured with swift test +
+  # llvm-cov on the macOS host: the app schemes' xccov report does not attribute the statically linked Core sources,
+  # and the UI layer (Targets/**) is "not measured" (also sonar.coverage.exclusions in sonar-project.properties).
+  core:
+    name: Core — tests, coverage (80% line bar), DocC
+    needs: lint
+    runs-on: <runner>
+    timeout-minutes: 30
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Select Xcode <xcode-version>
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '<xcode-version>'
+
+      - name: Core tests with coverage (80% line bar)
+        run: |
+          set -euo pipefail
+          swift test --package-path Packages/Core --enable-code-coverage
+          BIN="$(swift build --package-path Packages/Core --show-bin-path)"
+          TEST_BINARY="$BIN/CoreTests.xctest/Contents/MacOS/CoreTests"
+          PROFDATA="$BIN/codecov/default.profdata"
+          IGNORE='(Tests/|DerivedSources|\.build/)'
+          xcrun llvm-cov report "$TEST_BINARY" -instr-profile "$PROFDATA" --ignore-filename-regex="$IGNORE"
+          xcrun llvm-cov export "$TEST_BINARY" -instr-profile "$PROFDATA" --ignore-filename-regex="$IGNORE" \
+            -format=lcov > coverage.lcov
+          xcrun llvm-cov export "$TEST_BINARY" -instr-profile "$PROFDATA" --ignore-filename-regex="$IGNORE" \
+            -summary-only > coverage-summary.json
+          python3 - <<'PY'
+          import json
+          percent = json.load(open("coverage-summary.json"))["data"][0]["totals"]["lines"]["percent"]
+          print(f"Core line coverage: {percent:.2f}% (bar: 80%)")
+          if percent < 80:
+              raise SystemExit(f"::error::Core line coverage {percent:.2f}% is below the 80% bar")
+          PY
+      # >>> sonar
+
+      - name: Convert coverage to SonarQube generic XML
+        run: python3 .github/scripts/lcov_to_sonar_generic.py coverage.lcov > sonarqube-generic-coverage.xml
+
+      - name: Upload the coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: core-coverage
+          path: |
+            coverage.lcov
+            sonarqube-generic-coverage.xml
+          retention-days: 7
+      # <<< sonar
+
+      # --warnings-as-errors is the documentation gate; the site job merges the archive under the Antora site's api/,
+      # so DocC bakes /<repo>/api into its links.
+      - name: DocC (Packages/Core)
+        run: |
+          mkdir -p build/docc
+          swift package --package-path Packages/Core --allow-writing-to-directory build/docc \
+            generate-documentation --target Core --warnings-as-errors \
+            --transform-for-static-hosting --hosting-base-path <repo>/api --output-path build/docc
+
+      - name: Upload the DocC archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: docc-api
+          path: build/docc
+          retention-days: 7
+
+  # One leg per platform scheme. Each builds for testing against the generic simulator destination (always — this is
+  # also the compile check for a platform whose runtime is missing), then runs the tests on the newest simulator
+  # runtime the selected Xcode supports, with OS= pinned because device names repeat across runtimes.
+  apps:
+    name: ${{ matrix.scheme }} — build and test
+    needs: lint
+    runs-on: <runner>
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # >>> platform: iOS
+          - scheme: <AppName>-iOS
+            platform: iOS
+            device: <ios-device-prefix>
+            runtime-required: true
+          # <<< platform: iOS
+          # >>> platform: watchOS
+          # Its own leg even when the watch app is embedded in the iOS app: the iOS scheme never runs the
+          # <AppName>Tests-watchOS/<AppName>UITests-watchOS bundles.
+          - scheme: <AppName>-watchOS
+            platform: watchOS
+            device: Apple Watch
+            runtime-required: true
+          # <<< platform: watchOS
+          # >>> platform: visionOS
+          # The visionOS simulator runtime is not on every image (see Step 5's runner-image table): without it the leg
+          # builds for testing and reports the tests unverified instead of failing.
+          - scheme: <AppName>-visionOS
+            platform: visionOS
+            device: Apple Vision Pro
+            runtime-required: false
+          # <<< platform: visionOS
+          # >>> platform: macOS
+          - scheme: <AppName>-macOS
+            platform: macOS
+            device: ''
+            runtime-required: true
+          # <<< platform: macOS
+    env:
+      SCHEME: ${{ matrix.scheme }}
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Select Xcode <xcode-version>
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '<xcode-version>'
+      # >>> generator: xcodegen
+
+      - name: Generate the Xcode project
+        run: |
+          command -v xcodegen >/dev/null || brew install xcodegen
+          xcodegen generate
+      # <<< generator: xcodegen
+      # >>> generator: tuist
+
+      - name: Generate the Xcode project
+        run: |
+          command -v tuist >/dev/null || brew install --cask tuist
+          tuist generate --no-open
+      # <<< generator: tuist
+
+      # Newest available runtime of the platform whose major.minor does not exceed the selected Xcode's simulator SDK,
+      # first device whose name starts with matrix.device → platform=<P> Simulator,name=<device>,OS=<version>.
+      - name: Resolve the test destination
+        id: destination
+        env:
+          DEVICE: ${{ matrix.device }}
+          RUNTIME_REQUIRED: ${{ matrix.runtime-required }}
+        run: |
+          set -euo pipefail
+          if [[ "$PLATFORM" == "macOS" ]]; then
+            echo "build=generic/platform=macOS" >> "$GITHUB_OUTPUT"
+            echo "test=platform=macOS" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$PLATFORM" in
+            iOS) sdk=iphonesimulator ;;
+            watchOS) sdk=watchsimulator ;;
+            visionOS) sdk=xrsimulator ;;
+          esac
+          destination="$(SDK_VERSION="$(xcrun --sdk "$sdk" --show-sdk-version)" python3 - <<'PY'
+          import json, os, subprocess
+
+          def ver(v):
+              return tuple(int(x) for x in v.split(".")[:2])
+
+          platform, prefix, sdk = os.environ["PLATFORM"], os.environ["DEVICE"], ver(os.environ["SDK_VERSION"])
+          names = {platform, "xrOS"} if platform == "visionOS" else {platform}
+          simctl = ["xcrun", "simctl", "list"]
+          runtimes = json.loads(subprocess.check_output(simctl + ["runtimes", "available", "-j"]))["runtimes"]
+          devices = json.loads(subprocess.check_output(simctl + ["devices", "available", "-j"]))["devices"]
+          candidates = [r for r in runtimes if r["platform"] in names and ver(r["version"]) <= sdk]
+          for runtime in sorted(candidates, key=lambda r: ver(r["version"]), reverse=True):
+              for device in devices.get(runtime["identifier"], []):
+                  if device["name"].startswith(prefix):
+                      print(f"platform={platform} Simulator,name={device['name']},OS={runtime['version']}")
+                      raise SystemExit
+          PY
+          )"
+          echo "build=generic/platform=$PLATFORM Simulator" >> "$GITHUB_OUTPUT"
+          echo "test=$destination" >> "$GITHUB_OUTPUT"
+          if [[ -n "$destination" ]]; then
+            echo "Test destination: $destination"
+          elif [[ "$RUNTIME_REQUIRED" == "true" ]]; then
+            echo "::error::No $PLATFORM simulator runtime with a '$DEVICE' device on this runner image."
+            exit 1
+          else
+            echo "::warning::$SCHEME tests unverified (no $PLATFORM simulator runtime installed on this runner image) — built for testing only."
+          fi
+
+      # macOS: ad-hoc signing (CODE_SIGNING_ALLOWED=NO would kill the UI-test runner on arm64); simulators need none.
+      - name: Build for testing
+        env:
+          BUILD_DESTINATION: ${{ steps.destination.outputs.build }}
+        run: |
+          set -eo pipefail
+          signing=()
+          if [[ "$PLATFORM" == "macOS" ]]; then
+            signing=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=)
+          fi
+          xcodebuild build-for-testing -project <AppName>.xcodeproj -scheme "$SCHEME" \
+            -destination "$BUILD_DESTINATION" -derivedDataPath build/dd "${signing[@]}" -quiet
+      # >>> platform: macOS, ci-tests: full
+
+      # XCUITest on macOS drives the real desktop session and needs Automation Mode without an authentication prompt.
+      # GitHub's hosted macOS images enable it (runner-images configure-machine.sh); a self-hosted runner needs
+      # `sudo automationmodetool enable-automationmode-without-authentication` once, run by an administrator.
+      - name: Check Automation Mode (macOS UI tests)
+        if: matrix.platform == 'macOS'
+        run: |
+          status="$(automationmodetool)"
+          echo "$status"
+          if [[ "$status" != *"DOES NOT REQUIRE"* ]]; then
+            echo "::error::Automation Mode requires authentication on this runner; UI tests would time out."
+            exit 1
+          fi
+      # <<< platform: macOS, ci-tests: full
+
+      - name: Test
+        if: steps.destination.outputs.test != ''
+        env:
+          TEST_DESTINATION: ${{ steps.destination.outputs.test }}
+          # UI contract: the test processes write captures here (xcodebuild strips the TEST_RUNNER_ prefix).
+          TEST_RUNNER_UI_SCREENSHOTS_DIR: ${{ github.workspace }}/.ui-screenshots
+        run: |
+          set -eo pipefail
+          signing=()
+          if [[ "$PLATFORM" == "macOS" ]]; then
+            signing=(CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=)
+          fi
+          skip=()
+          # >>> ci-tests: unit
+          # CoreTests + <AppName>Tests-<P>; the XCUITest bundle stays local (ci-tests: unit).
+          skip=("-skip-testing:<AppName>UITests-$PLATFORM")
+          # <<< ci-tests: unit
+          xcodebuild test-without-building -project <AppName>.xcodeproj -scheme "$SCHEME" \
+            -destination "$TEST_DESTINATION" -derivedDataPath build/dd "${skip[@]}" \
+            -resultBundlePath "build/$SCHEME.xcresult" "${signing[@]}" -quiet
+
+      - name: Test summary
+        if: (!cancelled()) && hashFiles(format('build/{0}.xcresult/Info.plist', matrix.scheme)) != ''
+        run: xcrun xcresulttool get test-results summary --path "build/$SCHEME.xcresult" --compact
+
+      - name: Upload the xcresult bundle
+        if: (!cancelled()) && hashFiles(format('build/{0}.xcresult/Info.plist', matrix.scheme)) != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.scheme }}-xcresult
+          path: build/${{ matrix.scheme }}.xcresult
+          retention-days: 14
+
+      - name: Collect UI screenshots from the xcresult
+        if: (!cancelled()) && hashFiles(format('build/{0}.xcresult/Info.plist', matrix.scheme)) != ''
+        run: |
+          set -eo pipefail
+          export_dir="$RUNNER_TEMP/attachments-$SCHEME"
+          xcrun xcresulttool export attachments --path "build/$SCHEME.xcresult" --output-path "$export_dir" > /dev/null
+          python3 - "$export_dir" .ui-screenshots <<'PY'
+          import json, os, re, shutil, sys
+          export, out = sys.argv[1], sys.argv[2]
+          for test in json.load(open(os.path.join(export, "manifest.json"))):
+              for a in test["attachments"]:
+                  name = re.sub(r"_\d+_[0-9A-Fa-f-]{36}(\.\w+)?$", "", a["suggestedHumanReadableName"])
+                  name = re.sub(r"\.png$", "", name)
+                  if re.match(r"^(component|screen|flow)~", name):
+                      path = os.path.join(out, name.replace("~", "/") + ".png")
+                      os.makedirs(os.path.dirname(path), exist_ok=True)
+                      shutil.copyfile(os.path.join(export, a["exportedFileName"]), path)
+          PY
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots-${{ matrix.scheme }}
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+  # >>> sonar
+
+  # Linux: the scan itself needs no Xcode. Skipped on pull requests from forks (no SONAR_TOKEN).
+  sonar:
+    name: SonarQube analysis
+    needs: [ lint, core ]
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download the coverage report
+        uses: actions/download-artifact@v8
+        with:
+          name: core-coverage
+
+      - name: Download the SwiftLint report
+        uses: actions/download-artifact@v8
+        with:
+          name: swiftlint-report
+
+      # sonar-project.properties (iru-setup-apple-app) carries the coordinates and
+      # sonar.coverageReportPaths=sonarqube-generic-coverage.xml.
+      - name: Run SonarQube analysis
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.host.url=<sonar-host-url>
+            -Dsonar.externalIssuesReportPaths=swiftlint-sonar.json
+  # <<< sonar
+
+  docs:
+    name: Docs — Antora
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs toolchain
+        working-directory: docs
+        run: npm ci
+
+      - name: Show Antora version
+        working-directory: docs
+        run: npx antora -v
+
+      - name: Build Antora docs
+        working-directory: docs
+        run: npx antora antora-playbook.yml
+
+      # Search index. The DocC archive is merged later (site job), so only the Antora pages are indexed; to make the
+      # API pages searchable, run `npx pagefind --site site` in the site job after the merge instead.
+      - name: Index the site for search
+        working-directory: docs
+        run: npx pagefind --site build/site
+
+      - name: Upload the Antora site
+        uses: actions/upload-artifact@v7
+        with:
+          name: antora-site
+          path: docs/build/site
+          retention-days: 7
+
+  # Merges the DocC archive (core job) under the Antora site's api/ — the layout every catalog stack uses.
+  site:
+    name: Docs — merge Antora + DocC
+    needs: [ docs, core ]
+    # >>> pages: yes
+    if: github.event_name == 'push' && github.ref == 'refs/heads/<stable-branch>'
+    # <<< pages: yes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the Antora site
+        uses: actions/download-artifact@v8
+        with:
+          name: antora-site
+          path: site
+
+      - name: Download the DocC archive
+        uses: actions/download-artifact@v8
+        with:
+          name: docc-api
+          path: site/api
+
+      - name: Disable Jekyll
+        run: touch site/.nojekyll
+
+      # Optional size guard (GitHub Pages rejects a site over 1 GB): uncomment; it must run after the last step that
+      # writes into the site directory (here, after the DocC archive is merged).
+      # - name: Check site size
+      #   run: |
+      #     size=$(du -sk site | cut -f1)
+      #     echo "site is ${size} KiB"
+      #     if [ "$size" -gt 960000 ]; then echo "::error::site over 960,000 KiB"; exit 1; fi
+      #     if [ "$size" -gt 900000 ]; then echo "::warning::site over 900,000 KiB"; fi
+      # >>> pages: yes
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+      # <<< pages: yes
+      # >>> pages: no
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-site
+          path: site
+          retention-days: 14
+      # <<< pages: no
+  # >>> pages: yes
+
+  deploy-docs:
+    name: Deploy docs to GitHub Pages
+    needs: site
+    if: github.event_name == 'push' && github.ref == 'refs/heads/<stable-branch>'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+  # <<< pages: yes

@@ -1,0 +1,41 @@
+  integration:
+    name: Integration tests (testcontainers)
+    needs: tests
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test     # django — the suite's fixtures swap in the container's DB
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v7
+      - name: Set up uv and Python <python-version>
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: '<python-version>'
+          enable-cache: true
+      - name: Install the project and the dev group
+        run: uv sync --locked
+      - name: Integration tests
+        run: uv run pytest -m integration --junitxml=build/test-results/pytest-integration.xml
+      # ui — Django with the scaffold's browser UI tier (tests/ui/ + the `ui` marker) only.
+      - name: Install Chromium for the UI tests
+        run: uv run playwright install --with-deps chromium
+      # ui — screenshots go to .ui-screenshots/ (UI_SCREENSHOTS_DIR overrides); the accessibility level comes from
+      # .ui-quality.yml (enforce fails the step on any axe violation).
+      - name: UI tests
+        run: uv run pytest -m ui --junitxml=build/test-results/pytest-ui.xml
+      - name: Upload the integration report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-report
+          path: build/test-results/pytest-integration.xml   # + build/test-results/pytest-ui.xml with the ui steps
+          retention-days: 7
+      # ui
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots-integration
+          path: .ui-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore

@@ -19,7 +19,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 4
-        versionName = "1.1.6"
+        versionName = "1.1.7-SNAPSHOT"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -49,6 +49,10 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+    lint {
+        // SARIF report is uploaded to GitHub code scanning by the CI workflows
+        sarifReport = true
     }
     buildFeatures {
         compose = true
@@ -87,12 +91,12 @@ sonar {
 
         property("sonar.coverage.jacoco.xmlReportPaths",
             listOf("build/reports/coverage/androidTest/debug/connected/report.xml",
-                "build/reports/coverage/test/report.xml"))
+                "build/reports/coverage/test/debug/report.xml"))
         property("sonar.java.coveragePlugin", "jacoco")
         property("sonar.junit.reportsPath",
-            listOf("build/build/test-results/testDebugUnitTest",
-                "build/build/outputs/androidTest-results/connected/debug"))
-        property("sonar.android.lint.report", "build/build/reports/lint-results-debug.xml")
+            listOf("build/test-results/testDebugUnitTest",
+                "build/outputs/androidTest-results/connected/debug"))
+        property("sonar.android.lint.report", "build/reports/lint-results-debug.xml")
     }
 }
 

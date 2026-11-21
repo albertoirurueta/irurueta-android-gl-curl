@@ -1,0 +1,128 @@
+import com.google.protobuf.gradle.id
+import io.github.kobylynskyi.graphql.codegen.gradle.GraphQLCodegenGradleTask
+import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
+
+plugins {
+    // ... existing iru.* convention plugins ...
+    alias(libs.plugins.openapi.generator)   // REST server / REST client modules
+    alias(libs.plugins.protobuf)            // gRPC server / gRPC client modules
+    alias(libs.plugins.avro)                // producers / consumers modules
+    alias(libs.plugins.graphql.codegen)     // GraphQL server / GraphQL client modules
+}
+
+val apis = rootProject.layout.projectDirectory.dir("apis")
+
+// REST server — one task per version file.
+val generateRestServerV1 =
+    tasks.register<GenerateTask>("generateRestServerV1") {
+        generatorName.set("kotlin-spring")
+        inputSpec.set(apis.file("rest-server/<service>-api-v1.yaml").asFile.absolutePath)
+        outputDir.set(layout.buildDirectory.dir("generated/openapi/rest-server-v1").get().asFile.absolutePath)
+        apiPackage.set("<base>.api.rest.v1.generated.api")
+        modelPackage.set("<base>.api.rest.v1.generated.model")
+        configOptions.set(
+            mapOf(
+                "interfaceOnly" to "true", "useSpringBoot4" to "true", "useJackson3" to "true", "useTags" to "true",
+                "useBeanValidation" to "true", "documentationProvider" to "none", "annotationLibrary" to "none",
+                "exceptionHandler" to "false", "gradleBuildFile" to "false", "reactive" to "<true-if-reactive>",
+                "serializableModel" to "true", "skipDefaultInterface" to "true",
+                "generateJsonIncludeAnnotations" to "false",
+                "generateJsonSetterNullsAnnotations" to "false",
+            ),
+        )
+    }
+
+// REST client, blocking (reactive: generatorName "kotlin-spring", library "spring-declarative-http-interface",
+// and Step 4's reactive configOptions as a map).
+val generate<Name>Client =
+    tasks.register<GenerateTask>("generate<Name>Client") {
+        generatorName.set("kotlin")
+        library.set("jvm-spring-restclient")
+        inputSpec.set(apis.file("rest-client/<name>/<name>-api.yaml").asFile.absolutePath)
+        outputDir.set(layout.buildDirectory.dir("generated/openapi/client-<name>").get().asFile.absolutePath)
+        packageName.set("<base>.infrastructure.clients.<name>.generated")
+        apiPackage.set("<base>.infrastructure.clients.<name>.generated.api")
+        modelPackage.set("<base>.infrastructure.clients.<name>.generated.model")
+        generateApiTests.set(false)
+        generateModelTests.set(false)
+        generateApiDocumentation.set(false)
+        generateModelDocumentation.set(false)
+        configOptions.set(
+            mapOf(
+                "serializationLibrary" to "jackson", "useSpringBoot4" to "true", "useJackson3" to "true",
+                "omitGradleWrapper" to "true", "serializableModel" to "true",
+            ),
+        )
+    }
+
+// GraphQL server (client: generateApis = false, generateClient = true, client packages, plus
+// implementation(libs.graphql.java.codegen)).
+val generateGraphqlServerV1 =
+    tasks.register<GraphQLCodegenGradleTask>("generateGraphqlServerV1") {
+        graphqlSchemaPaths = listOf(apis.file("graphql-server/<service>-v1.graphqls").asFile.absolutePath)
+        outputDir = layout.buildDirectory.dir("generated/graphql/server-v1").get().asFile
+        generatedLanguage = com.kobylynskyi.graphql.codegen.model.GeneratedLanguage.KOTLIN
+        apiPackageName = "<base>.api.graphql.v1.generated.api"
+        modelPackageName = "<base>.api.graphql.v1.generated.model"
+        generateApis = true
+        generateClient = false
+        addGeneratedAnnotation = false
+    }
+
+sourceSets {
+    main {
+        // srcDir(taskProvider) adds the task's output directory AND the task dependency, so compileKotlin — and
+        // anything else reading the source set — runs the generator first. Never srcDir(a plain path): that
+        // compiles stale or missing output.
+        kotlin.srcDir(generateRestServerV1)
+        kotlin.srcDir(generate<Name>Client)
+        kotlin.srcDir(generateGraphqlServerV1)
+        // .proto files live under apis/, not src/main/proto.
+        proto { srcDir(apis.dir("grpc-server")) }
+    }
+}
+
+// Spring for GraphQL loads the schema from classpath:graphql/ — Step 3a's maven-resources-plugin copy.
+tasks.processResources {
+    from(apis.dir("graphql-server")) {
+        include("*.graphqls")
+        into("graphql")
+    }
+}
+
+// gRPC: Java messages + grpc-java stubs, Kotlin DSL builders, grpc-kotlin coroutine stubs, protoc-gen-doc HTML.
+// The protobuf plugin registers every output directory on the source set and wires compileKotlin itself.
+protobuf {
+    protoc { artifact = libs.protobuf.protoc.get().toString() }
+    plugins {
+        id("grpc") { artifact = libs.grpc.protoc.gen.java.get().toString() }
+        id("grpckt") { artifact = libs.grpc.protoc.gen.kotlin.get().toString() + ":jdk8@jar" }
+        id("doc") { artifact = libs.protoc.gen.doc.get().toString() }   // gRPC server module only
+    }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins { create("kotlin") }
+            task.plugins {
+                create("grpc")
+                create("grpckt")
+                create("doc") { option("html,index.html") }               // gRPC server module only
+            }
+        }
+    }
+}
+
+// AVRO (Java output). The plugin reads src/main/avro by default; point it at apis/messaging.
+avro {
+    stringType.set("String")
+    fieldVisibility.set("PRIVATE")
+    isEnableDecimalLogicalType.set(true)
+}
+val generateAvroJava =
+    tasks.named<com.bakdata.gradle.avro.GenerateAvroJavaTask>("generateAvroJava") {
+        source(apis.dir("messaging"))
+    }
+// The plugin puts its output on the java source set but only makes compileJava depend on it; compileKotlin resolves
+// against the same Java files and needs the dependency too. Do NOT also call java.srcDir(generateAvroJava): that
+// realizes the task while the source set is being iterated, and processResources then fails with a bare
+// ConcurrentModificationException (hit while verifying this skill).
+tasks.named("compileKotlin") { dependsOn(generateAvroJava) }

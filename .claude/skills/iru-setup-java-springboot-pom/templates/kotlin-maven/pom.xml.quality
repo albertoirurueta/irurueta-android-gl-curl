@@ -1,0 +1,81 @@
+      <!-- detekt: fails the build on any finding (maxIssues: 0 in detekt.yml), like Checkstyle/PMD/SpotBugs do
+           for Java. Bound to verify; the XML report is what Sonar imports. -->
+      <plugin>
+        <groupId>com.github.ozsie</groupId>
+        <artifactId>detekt-maven-plugin</artifactId>
+        <version>${detekt-maven-plugin.version}</version>
+        <configuration>
+          <config>${maven.multiModuleProjectDirectory}/detekt.yml</config>
+          <buildUponDefaultConfig>true</buildUponDefaultConfig>
+          <input>${project.basedir}/src/main/kotlin,${project.basedir}/src/test/kotlin</input>
+          <excludes>**/generated/**,**/generated-sources/**</excludes>
+          <report>
+            <report>xml:${project.build.directory}/detekt.xml</report>
+            <report>html:${project.build.directory}/detekt.html</report>
+          </report>
+        </configuration>
+        <executions>
+          <execution>
+            <id>detekt</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- ktlint: formatting/style, failOnViolation defaults to true. Rules come from .editorconfig (Step 5).
+           Source roots are explicit so a standalone `mvn ktlint:check` (no compile first) still sees Kotlin;
+           generated sources live under target/ and are never listed. `mvn ktlint:format` fixes most findings. -->
+      <plugin>
+        <groupId>com.github.gantsign.maven</groupId>
+        <artifactId>ktlint-maven-plugin</artifactId>
+        <version>${ktlint-maven-plugin.version}</version>
+        <configuration>
+          <sourceRoots>
+            <sourceRoot>${project.basedir}/src/main/kotlin</sourceRoot>
+          </sourceRoots>
+          <testSourceRoots>
+            <testSourceRoot>${project.basedir}/src/test/kotlin</testSourceRoot>
+          </testSourceRoots>
+          <includeScripts>false</includeScripts>
+          <reporters>
+            <reporter>
+              <name>plain</name>
+            </reporter>
+            <reporter>
+              <name>checkstyle</name>
+              <output>${project.build.directory}/ktlint.xml</output>
+            </reporter>
+          </reporters>
+        </configuration>
+        <executions>
+          <execution>
+            <id>ktlint</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Dokka replaces Javadoc: `mvn compile dokka:dokka` writes <module>/target/dokka (no execution bound, so
+           ordinary builds don't pay for it). -->
+      <plugin>
+        <groupId>org.jetbrains.dokka</groupId>
+        <artifactId>dokka-maven-plugin</artifactId>
+        <version>${dokka-maven-plugin.version}</version>
+        <configuration>
+          <jdkVersion>${java.version}</jdkVersion>
+          <sourceDirectories>
+            <dir>${project.basedir}/src/main/kotlin</dir>
+          </sourceDirectories>
+          <documentedVisibilities>
+            <visibility>PUBLIC</visibility>
+            <visibility>PROTECTED</visibility>
+            <visibility>INTERNAL</visibility>
+          </documentedVisibilities>
+        </configuration>
+      </plugin>

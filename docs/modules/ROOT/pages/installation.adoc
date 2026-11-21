@@ -8,7 +8,7 @@ The library is published to Maven Central as an Android library (AAR).
 |===
 |Group ID |`com.irurueta`
 |Artifact ID |`irurueta-android-gl-curl`
-|Latest release |`1.1.6`
+|Latest release |`1.1.7`
 |License |Apache License 2.0
 |===
 
@@ -41,7 +41,7 @@ Then add the dependency to your module's `build.gradle.kts`:
 [source,kotlin]
 ----
 dependencies {
-    implementation("com.irurueta:irurueta-android-gl-curl:1.1.6")
+    implementation("com.irurueta:irurueta-android-gl-curl:1.1.7")
 }
 ----
 
@@ -50,7 +50,7 @@ dependencies {
 [source,groovy]
 ----
 dependencies {
-    implementation 'com.irurueta:irurueta-android-gl-curl:1.1.6'
+    implementation 'com.irurueta:irurueta-android-gl-curl:1.1.7'
 }
 ----
 
@@ -59,7 +59,7 @@ dependencies {
 [source,toml]
 ----
 [versions]
-glCurl = "1.1.6"
+glCurl = "1.1.7"
 
 [libraries]
 gl-curl = { module = "com.irurueta:irurueta-android-gl-curl", version.ref = "glCurl" }

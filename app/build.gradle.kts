@@ -18,8 +18,8 @@ android {
         applicationId = "com.irurueta.android.gl.curl.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.1.7-SNAPSHOT"
+        versionCode = 5
+        versionName = "1.1.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

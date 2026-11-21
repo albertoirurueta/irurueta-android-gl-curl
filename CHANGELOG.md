@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-11-21
+
 ### Added
 
 - Antora documentation site with usage guides, code examples and the demo GIF, plus Dokka API docs under `/api/`.
@@ -91,7 +93,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Initial release: `CurlTextureView` and `CurlGLSurfaceView` page curl views, and a demo application.
 
-[Unreleased]: https://github.com/albertoirurueta/irurueta-android-gl-curl/compare/1.1.6...develop
+[Unreleased]: https://github.com/albertoirurueta/irurueta-android-gl-curl/compare/1.1.7...develop
+[1.1.7]: https://github.com/albertoirurueta/irurueta-android-gl-curl/compare/1.1.6...1.1.7
 [1.1.6]: https://github.com/albertoirurueta/irurueta-android-gl-curl/compare/1.1.5...1.1.6
 [1.1.5]: https://github.com/albertoirurueta/irurueta-android-gl-curl/compare/1.1.4...1.1.5
 [1.1.4]: https://github.com/albertoirurueta/irurueta-android-gl-curl/compare/1.1.3...1.1.4

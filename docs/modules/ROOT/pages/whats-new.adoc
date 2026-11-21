@@ -2,7 +2,7 @@
 
 NOTE: This documentation was generated with the assistance of AI. Please report any inaccuracies.
 
-== Unreleased (1.1.7-SNAPSHOT)
+== 1.1.7
 
 * 📝 New documentation site, with usage guides and code examples.
 * 👷 Gitflow development model: `develop` integration branch with snapshot publishing, release workflow on `main`,

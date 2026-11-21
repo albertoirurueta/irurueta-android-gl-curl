@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - CI builds run on JDK 21 (the library still targets JVM 17).
 - Android Lint writes SARIF reports, uploaded to GitHub code scanning by CI.
+- Updated `irurueta-android-glutils` to 1.1.13 and `irurueta-android-test-utils` to 1.3.3.
 
 ### Fixed
 
